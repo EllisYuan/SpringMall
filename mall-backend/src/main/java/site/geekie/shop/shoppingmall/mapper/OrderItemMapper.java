@@ -45,4 +45,21 @@ public interface OrderItemMapper {
      * @return 影响行数
      */
     int insert(OrderItemDO item);
+
+    /**
+     * 根据订单ID列表批量查询所有订单明细
+     * 用于避免 N+1 查询，一次性加载多个订单的明细
+     *
+     * @param orderIds 订单ID列表
+     * @return 订单明细列表，按 order_id, id 排序
+     */
+    List<OrderItemDO> findByOrderIds(@Param("orderIds") List<Long> orderIds);
+
+    /**
+     * 根据订单ID列表批量删除订单明细
+     *
+     * @param orderIds 订单ID列表
+     * @return 影响行数
+     */
+    int deleteByOrderIds(@Param("orderIds") List<Long> orderIds);
 }

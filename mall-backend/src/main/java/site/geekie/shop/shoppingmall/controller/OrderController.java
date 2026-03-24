@@ -9,12 +9,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import site.geekie.shop.shoppingmall.annotation.CurrentUserId;
 import site.geekie.shop.shoppingmall.annotation.RateLimiter;
+import site.geekie.shop.shoppingmall.common.PageResult;
 import site.geekie.shop.shoppingmall.common.Result;
 import site.geekie.shop.shoppingmall.dto.OrderDTO;
 import site.geekie.shop.shoppingmall.vo.OrderVO;
 import site.geekie.shop.shoppingmall.service.OrderService;
-
-import java.util.List;
 
 /**
  * 订单控制器
@@ -57,8 +56,11 @@ public class OrderController {
      */
     @Operation(summary = "获取用户的所有订单")
     @GetMapping
-    public Result<List<OrderVO>> getMyOrders(@Parameter(hidden = true) @CurrentUserId Long userId) {
-        List<OrderVO> orders = orderService.getMyOrders(userId);
+    public Result<PageResult<OrderVO>> getMyOrders(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @Parameter(hidden = true) @CurrentUserId Long userId) {
+        PageResult<OrderVO> orders = orderService.getMyOrders(userId, page, size);
         return Result.success(orders);
     }
 
@@ -68,12 +70,16 @@ public class OrderController {
      *
      * @param status 订单状态（UNPAID/PAID/SHIPPED/COMPLETED/CANCELLED）
      * @param userId 当前登录用户ID（自动注入）
-     * @return 订单列表
+     * @return 分页订单列表
      */
     @Operation(summary = "根据状态获取用户订单")
     @GetMapping("/status/{status}")
-    public Result<List<OrderVO>> getMyOrdersByStatus(@PathVariable String status, @Parameter(hidden = true) @CurrentUserId Long userId) {
-        List<OrderVO> orders = orderService.getMyOrdersByStatus(status, userId);
+    public Result<PageResult<OrderVO>> getMyOrdersByStatus(
+            @PathVariable String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @Parameter(hidden = true) @CurrentUserId Long userId) {
+        PageResult<OrderVO> orders = orderService.getMyOrdersByStatus(status, userId, page, size);
         return Result.success(orders);
     }
 
@@ -120,5 +126,24 @@ public class OrderController {
     public Result<Void> confirmReceipt(@PathVariable String orderNo, @Parameter(hidden = true) @CurrentUserId Long userId) {
         orderService.confirmReceipt(orderNo, userId);
         return Result.success();
+    }
+
+    /**
+     * 获取历史归档订单
+     * GET /api/v1/orders/archive
+     *
+     * @param page 页码（默认1）
+     * @param size 每页大小（默认10）
+     * @param userId 当前登录用户ID（自动注入）
+     * @return 分页归档订单列表
+     */
+    @Operation(summary = "获取历史归档订单")
+    @GetMapping("/archive")
+    public Result<PageResult<OrderVO>> getArchivedOrders(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @Parameter(hidden = true) @CurrentUserId Long userId) {
+        PageResult<OrderVO> orders = orderService.getArchivedOrders(userId, page, size);
+        return Result.success(orders);
     }
 }

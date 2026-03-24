@@ -8,7 +8,7 @@ import site.geekie.shop.shoppingmall.mapper.ProductMapper;
 import site.geekie.shop.shoppingmall.vo.CartItemVO;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -90,13 +90,10 @@ public interface CartItemConverter {
                 .collect(Collectors.toList());
 
         // 批量查询所有商品，构建Map缓存
-        Map<Long, ProductDO> productMap = new HashMap<>();
-        for (Long productId : productIds) {
-            ProductDO product = productMapper.findById(productId);
-            if (product != null) {
-                productMap.put(productId, product);
-            }
-        }
+        Map<Long, ProductDO> productMap = productIds.isEmpty()
+                ? Collections.emptyMap()
+                : productMapper.findByIds(productIds).stream()
+                        .collect(Collectors.toMap(ProductDO::getId, p -> p));
 
         // 转换列表，使用缓存的商品数据
         return cartItems.stream()

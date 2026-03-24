@@ -160,4 +160,23 @@
         SELECT COALESCE(SUM(pay_amount), 0) FROM mall_order WHERE status != 'CANCELLED'
     </select>
 
+    <!-- 查询待归档订单 -->
+    <select id="findArchiveCandidates" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_order ord
+        WHERE ord.status IN ('COMPLETED', 'CANCELLED')
+          AND ord.created_at &lt; #{threshold}
+        ORDER BY ord.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 根据ID列表批量删除订单 -->
+    <delete id="deleteByIds">
+        DELETE FROM mall_order
+        WHERE id IN
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
 </mapper>

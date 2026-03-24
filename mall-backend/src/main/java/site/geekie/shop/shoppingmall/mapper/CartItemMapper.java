@@ -116,4 +116,14 @@ public interface CartItemMapper {
      * @return 商品种类数
      */
     int countByUserId(@Param("userId") Long userId);
+
+    /**
+     * 统计指定ID列表中属于指定用户的购物车项数量
+     * 用于批量验证购物车项所有权，避免 N+1 查询
+     *
+     * @param ids    购物车项ID列表
+     * @param userId 用户ID
+     * @return 属于该用户的购物车项数量
+     */
+    int countByIdsAndUserId(@Param("ids") List<Long> ids, @Param("userId") Long userId);
 }

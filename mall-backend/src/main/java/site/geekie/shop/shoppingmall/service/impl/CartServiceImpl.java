@@ -17,6 +17,8 @@ import site.geekie.shop.shoppingmall.service.CartService;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 购物车服务实现类
@@ -163,12 +165,10 @@ public class CartServiceImpl implements CartService {
             throw new BusinessException(ResultCode.INVALID_PARAMETER);
         }
 
-        // 验证所有购物车项的所有权
-        for (Long id : ids) {
-            CartItemDO cartItem = cartItemMapper.findById(id);
-            if (cartItem == null || !cartItem.getUserId().equals(userId)) {
-                throw new BusinessException(ResultCode.FORBIDDEN);
-            }
+        // 批量验证所有购物车项的所有权
+        int ownedCount = cartItemMapper.countByIdsAndUserId(ids, userId);
+        if (ownedCount != ids.size()) {
+            throw new BusinessException(ResultCode.FORBIDDEN);
         }
 
         cartItemMapper.deleteByIds(ids);
@@ -183,10 +183,21 @@ public class CartServiceImpl implements CartService {
     @Override
     public BigDecimal getCartTotal(Long userId) {
         List<CartItemDO> checkedItems = cartItemMapper.findCheckedByUserId(userId);
+        if (checkedItems.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+
+        List<Long> productIds = checkedItems.stream()
+                .map(CartItemDO::getProductId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<Long, ProductDO> productMap = productMapper.findByIds(productIds).stream()
+                .collect(Collectors.toMap(ProductDO::getId, p -> p));
 
         BigDecimal total = BigDecimal.ZERO;
         for (CartItemDO item : checkedItems) {
-            ProductDO product = productMapper.findById(item.getProductId());
+            ProductDO product = productMap.get(item.getProductId());
             if (product != null) {
                 BigDecimal itemTotal = product.getPrice().multiply(new BigDecimal(item.getQuantity()));
                 total = total.add(itemTotal);

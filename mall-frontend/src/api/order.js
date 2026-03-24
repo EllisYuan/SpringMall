@@ -72,3 +72,15 @@ export const confirmOrder = (orderNo) => {
     method: 'PUT'
   })
 }
+
+/**
+ * 获取历史归档订单
+ * @param {Object} params - 查询参数 { page, size }
+ */
+export const getArchivedOrders = (params) => {
+  return request({
+    url: '/orders/archive',
+    method: 'GET',
+    params
+  })
+}

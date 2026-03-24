@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Param;
 import site.geekie.shop.shoppingmall.entity.ProductDO;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 商品Mapper接口
@@ -97,6 +98,23 @@ public interface ProductMapper {
      * @return 商品数量
      */
     int countByCategoryId(@Param("categoryId") Long categoryId);
+
+    /**
+     * 根据ID列表批量查询商品
+     *
+     * @param ids 商品ID列表
+     * @return 商品列表
+     */
+    List<ProductDO> findByIds(@Param("ids") List<Long> ids);
+
+    /**
+     * 按分类ID列表批量统计商品数量
+     * 返回列表中每个 Map 包含 categoryId 和 cnt 两个 key
+     *
+     * @param categoryIds 分类ID列表
+     * @return 每个分类对应的商品数量列表
+     */
+    List<Map<String, Object>> countGroupByCategoryIds(@Param("categoryIds") List<Long> categoryIds);
 
     /**
      * 扣减库存

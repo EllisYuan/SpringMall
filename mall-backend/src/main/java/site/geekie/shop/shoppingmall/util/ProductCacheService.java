@@ -35,7 +35,6 @@ public class ProductCacheService {
 
     /**
      * 从缓存获取商品
-     * <p>
      * 优先检查空值缓存（防穿透），再检查正常缓存。
      * 缓存未命中或反序列化失败均返回 null，由调用方回源查 DB。
      *

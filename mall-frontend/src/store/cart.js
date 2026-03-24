@@ -67,7 +67,8 @@ export const useCartStore = defineStore('cart', {
       try {
         this.loading = true
         const data = await getCartApi()
-        this.items = data || []
+        // 将后端返回的 checked 字段（0/1 整数）统一转换为布尔值
+        this.items = (data || []).map(item => ({ ...item, checked: !!item.checked }))
       } catch (error) {
         console.error('获取购物车失败:', error)
         this.items = []

@@ -20,8 +20,11 @@ import site.geekie.shop.shoppingmall.mapper.ProductMapper;
 import site.geekie.shop.shoppingmall.service.CategoryService;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * 分类服务实现类
@@ -70,9 +73,21 @@ public class CategoryServiceImpl implements CategoryService {
         List<CategoryDO> categories = categoryMapper.findAll();
         List<CategoryVO> result = categoryConverter.toVOList(categories);
 
-        // 3. 填充每个分类的商品数量
+        // 3. 批量查询每个分类的商品数量
+        List<Long> categoryIds = result.stream()
+                .map(CategoryVO::getId)
+                .collect(Collectors.toList());
+        Map<Long, Integer> countMap = new HashMap<>();
+        if (!categoryIds.isEmpty()) {
+            List<Map<String, Object>> counts = productMapper.countGroupByCategoryIds(categoryIds);
+            for (Map<String, Object> row : counts) {
+                Long catId = ((Number) row.get("categoryId")).longValue();
+                Integer cnt = ((Number) row.get("cnt")).intValue();
+                countMap.put(catId, cnt);
+            }
+        }
         for (CategoryVO vo : result) {
-            vo.setProductCount(productMapper.countByCategoryId(vo.getId()));
+            vo.setProductCount(countMap.getOrDefault(vo.getId(), 0));
         }
 
         // 4. 写入缓存

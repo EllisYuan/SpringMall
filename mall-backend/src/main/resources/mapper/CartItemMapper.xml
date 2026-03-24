@@ -103,4 +103,14 @@
         SELECT COUNT(*) FROM mall_cart_item WHERE user_id = #{userId}
     </select>
 
+    <!-- 统计指定ID列表中属于指定用户的购物车项数量 -->
+    <select id="countByIdsAndUserId" resultType="int">
+        SELECT COUNT(*) FROM mall_cart_item
+        WHERE user_id = #{userId}
+          AND id IN
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
 </mapper>

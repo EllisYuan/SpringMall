@@ -27,6 +27,7 @@ import site.geekie.shop.shoppingmall.service.PaymentService;
 import site.geekie.shop.shoppingmall.util.OrderNoGenerator;
 import site.geekie.shop.shoppingmall.util.RedisDistributedLock;
 import site.geekie.shop.shoppingmall.util.StockRedisService;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -52,6 +53,8 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
+    private final OrderArchiveMapper orderArchiveMapper;
+    private final OrderItemArchiveMapper orderItemArchiveMapper;
     private final CartItemMapper cartItemMapper;
     private final ProductMapper productMapper;
     private final AddressMapper addressMapper;
@@ -61,6 +64,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderMessageProducer orderMessageProducer;
     private final StockRedisService stockRedisService;
     private final RedisDistributedLock redisDistributedLock;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -115,12 +119,19 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(ResultCode.FORBIDDEN);
         }
 
-        // 3. 验证商品状态并计算总价（快速失败：DB 库存不足也在此提前拦截）
+        // 3. 批量查询商品信息，验证状态并计算总价
+        List<Long> productIds = checkedItems.stream()
+                .map(CartItemDO::getProductId)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, ProductDO> productMap = productMapper.findByIds(productIds).stream()
+                .collect(Collectors.toMap(ProductDO::getId, p -> p));
+
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<OrderItemDO> orderItems = new ArrayList<>();
 
         for (CartItemDO cartItem : checkedItems) {
-            ProductDO product = productMapper.findById(cartItem.getProductId());
+            ProductDO product = productMap.get(cartItem.getProductId());
             if (product == null) {
                 throw new BusinessException(ResultCode.PRODUCT_NOT_FOUND);
             }
@@ -247,16 +258,16 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public List<OrderVO> getMyOrders(Long userId) {
+    public PageResult<OrderVO> getMyOrders(Long userId, int page, int size) {
+        PageHelper.startPage(page, size);
         List<OrderDO> orders = orderMapper.findByUserId(userId);
-
-        return orders.stream()
-                .map(o -> orderConverter.toVOWithItems(o, orderItemMapper, orderItemConverter))
-                .collect(Collectors.toList());
+        PageInfo<OrderDO> pageInfo = new PageInfo<>(orders);
+        List<OrderVO> voList = buildOrderVOListWithItems(orders);
+        return new PageResult<>(voList, pageInfo.getTotal(), page, size);
     }
 
     @Override
-    public List<OrderVO> getMyOrdersByStatus(String status, Long userId) {
+    public PageResult<OrderVO> getMyOrdersByStatus(String status, Long userId, int page, int size) {
         // 验证状态是否合法
         try {
             OrderStatus.fromCode(status);
@@ -264,16 +275,54 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(ResultCode.INVALID_ORDER_STATUS);
         }
 
+        PageHelper.startPage(page, size);
         List<OrderDO> orders = orderMapper.findByUserIdAndStatus(userId, status);
+        PageInfo<OrderDO> pageInfo = new PageInfo<>(orders);
+        List<OrderVO> voList = buildOrderVOListWithItems(orders);
+        return new PageResult<>(voList, pageInfo.getTotal(), page, size);
+    }
 
-        return orders.stream()
-                .map(o -> orderConverter.toVOWithItems(o, orderItemMapper, orderItemConverter))
+    /**
+     * 批量构建带明细的订单 VO 列表（避免 N+1 查询）
+     *
+     * @param orders 订单DO列表
+     * @return 带订单明细的订单VO列表
+     */
+    private List<OrderVO> buildOrderVOListWithItems(List<OrderDO> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return List.of();
+        }
+
+        // 批量查询所有订单明细
+        List<Long> orderIds = orders.stream()
+                .map(OrderDO::getId)
                 .collect(Collectors.toList());
+        Map<Long, List<OrderItemDO>> itemsMap = orderItemMapper.findByOrderIds(orderIds).stream()
+                .collect(Collectors.groupingBy(OrderItemDO::getOrderId));
+
+        // 逐个组装 VO
+        return orders.stream().map(order -> {
+            OrderVO vo = orderConverter.toVOComplete(order);
+            List<OrderItemDO> items = itemsMap.getOrDefault(order.getId(), List.of());
+            vo.setItems(items.stream()
+                    .map(orderItemConverter::toVO)
+                    .collect(Collectors.toList()));
+            return vo;
+        }).collect(Collectors.toList());
     }
 
     @Override
     public OrderVO getOrderDetail(String orderNo, Long userId) {
+        // 先查热表
         OrderDO order = orderMapper.findByOrderNo(orderNo);
+        boolean fromArchive = false;
+
+        if (order == null) {
+            // 降级查归档表
+            order = orderArchiveMapper.findByOrderNo(orderNo);
+            fromArchive = true;
+        }
+
         if (order == null) {
             throw new BusinessException(ResultCode.ORDER_NOT_FOUND);
         }
@@ -281,6 +330,14 @@ public class OrderServiceImpl implements OrderService {
         // 验证订单所有权
         if (!order.getUserId().equals(userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN);
+        }
+
+        if (fromArchive) {
+            // 从归档表加载明细
+            OrderVO vo = orderConverter.toVOComplete(order);
+            List<OrderItemDO> items = orderItemArchiveMapper.findByOrderIds(List.of(order.getId()));
+            vo.setItems(items.stream().map(orderItemConverter::toVO).collect(Collectors.toList()));
+            return vo;
         }
 
         return orderConverter.toVOWithItems(order, orderItemMapper, orderItemConverter);
@@ -390,8 +447,22 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderVO getOrderDetailAdmin(String orderNo) {
         OrderDO order = orderMapper.findByOrderNo(orderNo);
+        boolean fromArchive = false;
+
+        if (order == null) {
+            order = orderArchiveMapper.findByOrderNo(orderNo);
+            fromArchive = true;
+        }
+
         if (order == null) {
             throw new BusinessException(ResultCode.ORDER_NOT_FOUND);
+        }
+
+        if (fromArchive) {
+            OrderVO vo = orderConverter.toVOComplete(order);
+            List<OrderItemDO> items = orderItemArchiveMapper.findByOrderIds(List.of(order.getId()));
+            vo.setItems(items.stream().map(orderItemConverter::toVO).collect(Collectors.toList()));
+            return vo;
         }
 
         // 管理员查看订单详情不需要验证所有权
@@ -461,6 +532,57 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public BigDecimal getTotalSales() {
-        return orderMapper.sumPayAmountExcludeCancelled();
+        String cacheKey = "stats:order:total_sales";
+        try {
+            String cached = stringRedisTemplate.opsForValue().get(cacheKey);
+            if (cached != null) {
+                return new BigDecimal(cached);
+            }
+        } catch (Exception e) {
+            log.warn("读取销售额缓存失败: {}", e.getMessage());
+        }
+
+        BigDecimal totalSales = orderMapper.sumPayAmountExcludeCancelled();
+
+        try {
+            stringRedisTemplate.opsForValue().set(cacheKey, totalSales.toPlainString(), 5, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.warn("写入销售额缓存失败: {}", e.getMessage());
+        }
+
+        return totalSales;
+    }
+
+    @Override
+    public PageResult<OrderVO> getArchivedOrders(Long userId, int page, int size) {
+        PageHelper.startPage(page, size);
+        List<OrderDO> orders = orderArchiveMapper.findByUserId(userId);
+        PageInfo<OrderDO> pageInfo = new PageInfo<>(orders);
+        List<OrderVO> voList = buildArchiveOrderVOListWithItems(orders);
+        return new PageResult<>(voList, pageInfo.getTotal(), page, size);
+    }
+
+    /**
+     * 批量构建带明细的归档订单 VO 列表（避免 N+1 查询）
+     */
+    private List<OrderVO> buildArchiveOrderVOListWithItems(List<OrderDO> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> orderIds = orders.stream()
+                .map(OrderDO::getId)
+                .collect(Collectors.toList());
+        Map<Long, List<OrderItemDO>> itemsMap = orderItemArchiveMapper.findByOrderIds(orderIds).stream()
+                .collect(Collectors.groupingBy(OrderItemDO::getOrderId));
+
+        return orders.stream().map(order -> {
+            OrderVO vo = orderConverter.toVOComplete(order);
+            List<OrderItemDO> items = itemsMap.getOrDefault(order.getId(), List.of());
+            vo.setItems(items.stream()
+                    .map(orderItemConverter::toVO)
+                    .collect(Collectors.toList()));
+            return vo;
+        }).collect(Collectors.toList());
     }
 }

@@ -1,6 +1,6 @@
 # API 接口详细文档
 
-> 最后更新时间：2026-02-20
+> 最后更新时间：2026-03-24
 
 ## 1. 认证模块 `/auth`
 
@@ -167,6 +167,8 @@ GET /api/v1/products/{id}
 GET /api/v1/products/search?keyword=iPhone&page=1&size=10
 ```
 **查询参数**: `keyword`（必填）、`page`（页码，默认1）、`size`（每页数量，默认10，最大100）
+
+**搜索实现**: 使用 MySQL ngram 全文索引（`MATCH...AGAINST IN BOOLEAN MODE`），支持中文 2 字符分词，结果按相关性排序，次排序按销量降序。
 
 **响应**: PageResult（结构同商品列表）
 
@@ -467,15 +469,46 @@ Authorization: Bearer <token>
 
 ### 订单列表
 ```http
-GET /api/v1/orders
+GET /api/v1/orders?page=1&size=10
 Authorization: Bearer <token>
+```
+**查询参数**: `page`（页码，默认1）、`size`（每页数量，默认10）
+
+**响应**: PageResult
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "orderNo": "20260108123456789",
+        "totalAmount": 15998.00,
+        "payAmount": 15998.00,
+        "freight": 0.00,
+        "status": "UNPAID",
+        "statusDesc": "待支付",
+        "items": [...]
+      }
+    ],
+    "total": 25,
+    "page": 1,
+    "size": 10,
+    "pages": 3
+  }
+}
 ```
 
 ### 按状态查询
 ```http
-GET /api/v1/orders/status/{status}
+GET /api/v1/orders/status/{status}?page=1&size=10
 Authorization: Bearer <token>
 ```
+**查询参数**: `page`（页码，默认1）、`size`（每页数量，默认10）
+
+**响应**: PageResult（结构同订单列表）
+
 **订单状态**:
 - `UNPAID` - 待支付
 - `PAID` - 已支付
@@ -537,6 +570,39 @@ PUT /api/v1/orders/{orderNo}/confirm
 Authorization: Bearer <token>
 ```
 **限制**: 只能确认已发货订单
+
+### 获取历史归档订单
+```http
+GET /api/v1/orders/archive?page=1&size=10
+Authorization: Bearer <token>
+```
+**查询参数**: `page`（页码，默认1）、`size`（每页大小，默认10）
+
+**描述**: 查询已归档的历史订单（3个月前的已完成/已取消订单）
+
+**响应**: PageResult
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "orderNo": "ORD20240101001",
+        "status": "COMPLETED",
+        "totalAmount": 299.00,
+        "items": [...],
+        "createdAt": "2024-01-01T10:00:00"
+      }
+    ],
+    "total": 50,
+    "page": 1,
+    "size": 10,
+    "pages": 5
+  }
+}
+```
 
 ---
 

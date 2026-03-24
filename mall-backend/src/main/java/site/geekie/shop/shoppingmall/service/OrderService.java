@@ -29,21 +29,25 @@ public interface OrderService {
     OrderVO createOrder(OrderDTO request, Long userId);
 
     /**
-     * 获取当前用户的所有订单
+     * 获取当前用户的所有订单（分页）
      *
      * @param userId 当前登录用户ID
-     * @return 订单列表
+     * @param page 页码
+     * @param size 每页大小
+     * @return 分页订单列表
      */
-    List<OrderVO> getMyOrders(Long userId);
+    PageResult<OrderVO> getMyOrders(Long userId, int page, int size);
 
     /**
-     * 根据状态获取当前用户的订单
+     * 根据状态获取当前用户的订单（分页）
      *
      * @param status 订单状态
      * @param userId 当前登录用户ID
-     * @return 订单列表
+     * @param page 页码
+     * @param size 每页大小
+     * @return 分页订单列表
      */
-    List<OrderVO> getMyOrdersByStatus(String status, Long userId);
+    PageResult<OrderVO> getMyOrdersByStatus(String status, Long userId, int page, int size);
 
     /**
      * 获取订单详情
@@ -125,4 +129,14 @@ public interface OrderService {
      * @return 总销售额，无数据时返回 0
      */
     BigDecimal getTotalSales();
+
+    /**
+     * 获取用户的归档历史订单（分页）
+     *
+     * @param userId 当前登录用户ID
+     * @param page 页码
+     * @param size 每页大小
+     * @return 分页订单列表
+     */
+    PageResult<OrderVO> getArchivedOrders(Long userId, int page, int size);
 }

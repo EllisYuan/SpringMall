@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 import site.geekie.shop.shoppingmall.common.Result;
 import site.geekie.shop.shoppingmall.common.ResultCode;
+import site.geekie.shop.shoppingmall.util.TokenBlacklistService;
 
 import java.io.IOException;
 
@@ -49,6 +50,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     // JSON 序列化器，用于写出 401 响应体
     private final ObjectMapper objectMapper;
 
+    // Token 黑名单服务（Redis）
+    private final TokenBlacklistService tokenBlacklistService;
+
     /**
      * 过滤器内部处理逻辑
      * 每个请求执行一次
@@ -68,8 +72,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = getJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt)) {
+                // 检查 token 是否在黑名单中
+                if (tokenBlacklistService.isBlacklisted(jwt)) {
+                    log.debug("JWT token 已被列入黑名单");
+                    sendUnauthorizedResponse(response, "登录凭证已失效，请重新登录");
+                    return;
+                }
+
                 // 从Token中获取用户名
                 String username = tokenProvider.getUsernameFromToken(jwt);
+
+                // 检查用户是否被强制登出
+                Long userId = tokenProvider.getUserIdFromToken(jwt);
+                long issuedAt = tokenProvider.getIssuedAtFromToken(jwt);
+                if (tokenBlacklistService.isForceLoggedOut(userId, issuedAt)) {
+                    log.debug("用户 {} 已被强制登出，token 签发于强制登出之前", userId);
+                    sendUnauthorizedResponse(response, "账号已被强制下线，请重新登录");
+                    return;
+                }
 
                 // 加载用户详情
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);

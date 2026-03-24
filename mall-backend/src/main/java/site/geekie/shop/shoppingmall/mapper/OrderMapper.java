@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Param;
 import site.geekie.shop.shoppingmall.entity.OrderDO;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -146,4 +147,21 @@ public interface OrderMapper {
      * @return 总销售额，无数据时返回 0
      */
     BigDecimal sumPayAmountExcludeCancelled();
+
+    /**
+     * 查询待归档的订单（已完成或已取消且创建时间早于阈值）
+     *
+     * @param threshold 时间阈值
+     * @param limit 每批数量
+     * @return 待归档订单列表
+     */
+    List<OrderDO> findArchiveCandidates(@Param("threshold") LocalDateTime threshold, @Param("limit") int limit);
+
+    /**
+     * 根据ID列表批量删除订单
+     *
+     * @param ids 订单ID列表
+     * @return 影响行数
+     */
+    int deleteByIds(@Param("ids") List<Long> ids);
 }

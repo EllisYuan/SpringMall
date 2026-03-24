@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="site.geekie.shop.shoppingmall.mapper.OrderArchiveMapper">
+
+    <resultMap id="BaseResultMap" type="site.geekie.shop.shoppingmall.entity.OrderDO">
+        <id column="id" property="id"/>
+        <result column="order_no" property="orderNo"/>
+        <result column="user_id" property="userId"/>
+        <result column="total_amount" property="totalAmount"/>
+        <result column="pay_amount" property="payAmount"/>
+        <result column="freight" property="freight"/>
+        <result column="status" property="status"/>
+        <result column="payment_no" property="paymentNo"/>
+        <result column="payment_method" property="paymentMethod"/>
+        <result column="payment_time" property="paymentTime"/>
+        <result column="ship_time" property="shipTime"/>
+        <result column="complete_time" property="completeTime"/>
+        <result column="receiver_name" property="receiverName"/>
+        <result column="receiver_phone" property="receiverPhone"/>
+        <result column="receiver_address" property="receiverAddress"/>
+        <result column="remark" property="remark"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, order_no, user_id, total_amount, pay_amount, freight, status,
+        payment_method, payment_time, ship_time, complete_time,
+        receiver_name, receiver_phone, receiver_address, remark,
+        created_at, updated_at
+    </sql>
+
+    <select id="findByOrderNo" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_order_archive
+        WHERE order_no = #{orderNo}
+    </select>
+
+    <insert id="batchInsert">
+        INSERT INTO mall_order_archive (
+            id, order_no, user_id, total_amount, pay_amount, freight, status,
+            payment_method, payment_time, ship_time, complete_time,
+            receiver_name, receiver_phone, receiver_address, remark,
+            created_at, updated_at
+        ) VALUES
+        <foreach collection="orders" item="o" separator=",">
+            (
+                #{o.id}, #{o.orderNo}, #{o.userId}, #{o.totalAmount}, #{o.payAmount},
+                #{o.freight}, #{o.status}, #{o.paymentMethod}, #{o.paymentTime},
+                #{o.shipTime}, #{o.completeTime}, #{o.receiverName}, #{o.receiverPhone},
+                #{o.receiverAddress}, #{o.remark}, #{o.createdAt}, #{o.updatedAt}
+            )
+        </foreach>
+    </insert>
+
+    <select id="findByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_order_archive
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+    </select>
+
+</mapper>

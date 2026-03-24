@@ -1,6 +1,6 @@
 # Spring Mall API 接口文档
 
-> 最后更新时间：2026-03-14
+> 最后更新时间：2026-03-24
 
 ## 项目概述
 
@@ -243,6 +243,8 @@ GET /api/v1/products/{id}
 GET /api/v1/products/search?keyword=iPhone&page=1&size=10
 ```
 **查询参数**: `keyword`（必填）、`page`（页码，默认1）、`size`（每页数量，默认10，最大100）
+
+**搜索实现**: 使用 MySQL ngram 全文索引（`MATCH(name, subtitle) AGAINST(keyword IN BOOLEAN MODE)`），支持中文 2 字符分词。结果按相关性排序，次排序按销量降序。
 
 **响应**: PageResult（结构同 3.1）
 
@@ -490,15 +492,61 @@ Authorization: Bearer <token>
 
 #### 7.2 订单列表
 ```http
-GET /api/v1/orders
+GET /api/v1/orders?page=1&size=10
 Authorization: Bearer <token>
 ```
 
+**查询参数**:
+- `page`（页码，默认1）
+- `size`（每页数量，默认10）
+
+**响应**: PageResult
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "orderNo": "20260108123456789",
+        "totalAmount": 15998.00,
+        "payAmount": 15998.00,
+        "freight": 0.00,
+        "status": "UNPAID",
+        "statusDesc": "待支付",
+        "items": [
+          {
+            "productId": 1,
+            "productName": "iPhone 15 Pro",
+            "quantity": 2,
+            "unitPrice": 7999.00,
+            "totalPrice": 15998.00
+          }
+        ]
+      }
+    ],
+    "total": 25,
+    "page": 1,
+    "size": 10,
+    "pages": 3
+  }
+}
+```
+
+**说明**: 订单列表仅返回热表（近期）数据。已归档的历史订单需通过订单详情接口（7.4）按 orderNo 精确查询获取。
+
 #### 7.3 按状态查询
 ```http
-GET /api/v1/orders/status/{status}
+GET /api/v1/orders/status/{status}?page=1&size=10
 Authorization: Bearer <token>
 ```
+
+**查询参数**:
+- `page`（页码，默认1）
+- `size`（每页数量，默认10）
+
+**响应**: PageResult（结构同 7.2）
 
 **订单状态**:
 - `UNPAID` - 待支付
@@ -512,6 +560,8 @@ Authorization: Bearer <token>
 GET /api/v1/orders/{orderNo}
 Authorization: Bearer <token>
 ```
+
+**说明**: 先查热表，若未找到则自动回查归档表（`mall_order_archive`），对用户透明。
 
 #### 7.5 取消订单
 ```http
@@ -568,6 +618,42 @@ Authorization: Bearer <token>
 ```
 
 **限制**: 只能确认已发货订单
+
+#### 7.7 获取历史归档订单
+
+- **URL**: `GET /api/v1/orders/archive`
+- **认证**: 需要 USER 角色
+- **描述**: 查询已归档的历史订单（3个月前的已完成/已取消订单）
+
+**请求参数**:
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| page | int | 否 | 1 | 页码 |
+| size | int | 否 | 10 | 每页大小 |
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "orderNo": "ORD20240101001",
+        "status": "COMPLETED",
+        "totalAmount": 299.00,
+        "items": [...],
+        "createdAt": "2024-01-01T10:00:00"
+      }
+    ],
+    "total": 50,
+    "page": 1,
+    "size": 10,
+    "pages": 5
+  }
+}
+```
 
 ---
 
@@ -1498,6 +1584,37 @@ UNPAID（待支付） → 支付 → PAID（已支付）
 
 UNPAID（待支付） → 取消 → CANCELLED（已取消）
 ```
+
+### 6. 数据库优化（V2/V3 迁移）
+
+#### 组合索引（`db/V2_add_indexes.sql`）
+
+| 表 | 索引名 | 列 | 用途 |
+|----|--------|-----|------|
+| `mall_order` | `idx_user_id_status` | `(user_id, status)` | 优化按状态查询用户订单 |
+| `mall_order` | `idx_user_id_created_at` | `(user_id, created_at)` | 优化用户订单列表排序，避免 filesort |
+| `mall_order_item` | `idx_order_id_product_id` | `(order_id, product_id)` | 优化订单明细关联查询 |
+| `mall_product` | `idx_name_prefix` | `name(50)` | 优化商品名称前缀搜索 |
+| `mall_product` | `ft_name_subtitle` | `FULLTEXT(name, subtitle) WITH PARSER ngram` | 中文全文搜索，需 `ngram_token_size=2` |
+
+#### 冷热数据分离 — 归档表（`db/V3_archive_tables.sql`）
+
+| 热表 | 归档表 | 归档条件 |
+|------|--------|---------|
+| `mall_order` | `mall_order_archive` | status IN ('COMPLETED','CANCELLED') AND created_at < 3 个月前 |
+| `mall_order_item` | `mall_order_item_archive` | 关联 order 已归档 |
+| `mall_payment` | `mall_payment_archive` | 关联 order 已归档 |
+| `mall_refund` | `mall_refund_archive` | 关联 order 已归档 |
+
+- **定时归档**: 每天凌晨 2:00 自动执行（`OrderArchiveTask`），每批 500 条，分批事务
+- **查询路由**: 订单详情接口先查热表，无结果时自动回查归档表，对用户透明
+- **列表接口不查归档表**: 订单列表（7.2/7.3）仅返回热表数据
+
+#### 聚合缓存
+
+| 接口 | 缓存 Key | TTL | 说明 |
+|------|----------|-----|------|
+| `GET /admin/orders/stats/total-sales` | `stats:order:total_sales` | 5 分钟 | Redis 缓存总销售额，降级为 DB 查询 |
 
 ---
 

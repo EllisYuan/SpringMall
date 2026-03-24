@@ -62,7 +62,11 @@ CREATE TABLE `mall_product` (
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
     KEY `idx_category_id` (`category_id`),
-    KEY `idx_status` (`status`)
+    KEY `idx_status` (`status`),
+    KEY `idx_name_prefix` (`name`(50)),
+    FULLTEXT KEY `ft_name_subtitle` (`name`, `subtitle`) WITH PARSER ngram
+    -- 回滚: ALTER TABLE mall_product DROP INDEX idx_name_prefix;
+    -- 回滚: ALTER TABLE mall_product DROP INDEX ft_name_subtitle;
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品表';
 
 -- ----------------------------------------
@@ -125,7 +129,11 @@ CREATE TABLE `mall_order` (
     UNIQUE KEY `uk_order_no` (`order_no`),
     KEY `idx_user_id` (`user_id`),
     KEY `idx_status` (`status`),
-    KEY `idx_created_at` (`created_at`)
+    KEY `idx_created_at` (`created_at`),
+    KEY `idx_user_id_status` (`user_id`, `status`),
+    KEY `idx_user_id_created_at` (`user_id`, `created_at`)
+    -- 回滚: ALTER TABLE mall_order DROP INDEX idx_user_id_status;
+    -- 回滚: ALTER TABLE mall_order DROP INDEX idx_user_id_created_at;
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';
 
 -- ----------------------------------------
@@ -143,7 +151,9 @@ CREATE TABLE `mall_order_item` (
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (`id`),
     KEY `idx_order_id` (`order_id`),
-    KEY `idx_product_id` (`product_id`)
+    KEY `idx_product_id` (`product_id`),
+    KEY `idx_order_id_product_id` (`order_id`, `product_id`)
+    -- 回滚: ALTER TABLE mall_order_item DROP INDEX idx_order_id_product_id;
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单明细表';
 
 -- ----------------------------------------
@@ -190,6 +200,23 @@ CREATE TABLE `mall_refund` (
     KEY `idx_payment_no` (`payment_no`),
     KEY `idx_refund_status` (`refund_status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款记录表';
+
+-- ----------------------------------------
+-- 10. 归档表（冷热数据分离）
+-- 回滚方案:
+--   DROP TABLE IF EXISTS mall_order_archive;
+--   DROP TABLE IF EXISTS mall_order_item_archive;
+--   DROP TABLE IF EXISTS mall_payment_archive;
+--   DROP TABLE IF EXISTS mall_refund_archive;
+-- ----------------------------------------
+CREATE TABLE `mall_order_archive` LIKE `mall_order`;
+CREATE TABLE `mall_order_item_archive` LIKE `mall_order_item`;
+CREATE TABLE `mall_payment_archive` LIKE `mall_payment`;
+CREATE TABLE `mall_refund_archive` LIKE `mall_refund`;
+
+-- 归档表额外索引
+ALTER TABLE `mall_order_archive` ADD INDEX `idx_archive_user_created` (`user_id`, `created_at`);
+ALTER TABLE `mall_order_archive` ADD INDEX `idx_archive_order_no` (`order_no`);
 
 -- ----------------------------------------
 -- 初始数据

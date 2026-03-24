@@ -44,11 +44,12 @@
         SELECT prod.id, prod.category_id, prod.name, prod.subtitle, prod.main_image, prod.images,
                prod.detail, prod.price, prod.stock, prod.status, prod.sales_count, prod.created_at, prod.updated_at
         FROM mall_product prod
-        LEFT JOIN mall_category cat ON prod.category_id = cat.id
+        <if test="sortColumn != null and sortColumn.startsWith('cat.')">
+            LEFT JOIN mall_category cat ON prod.category_id = cat.id
+        </if>
         <where>
             <if test="keyword != null and keyword != ''">
-                AND (prod.name LIKE CONCAT('%', #{keyword}, '%')
-                    OR prod.subtitle LIKE CONCAT('%', #{keyword}, '%'))
+                AND MATCH(prod.name, prod.subtitle) AGAINST(#{keyword} IN BOOLEAN MODE)
             </if>
             <if test="categoryId != null">
                 AND prod.category_id = #{categoryId}
@@ -68,14 +69,14 @@
         ORDER BY created_at DESC
     </select>
 
-    <!-- 根据关键词搜索商品 -->
+    <!-- 根据关键词搜索商品（ngram 全文索引） -->
     <select id="searchByKeyword" resultMap="BaseResultMap">
-        SELECT <include refid="Base_Column_List"/>
+        SELECT <include refid="Base_Column_List"/>,
+               MATCH(name, subtitle) AGAINST(#{keyword} IN BOOLEAN MODE) AS relevance
         FROM mall_product
-        WHERE (name LIKE CONCAT('%', #{keyword}, '%')
-           OR subtitle LIKE CONCAT('%', #{keyword}, '%'))
+        WHERE MATCH(name, subtitle) AGAINST(#{keyword} IN BOOLEAN MODE)
           AND status = 1
-        ORDER BY created_at DESC
+        ORDER BY relevance DESC, sales_count DESC
     </select>
 
     <!-- 插入商品 -->
@@ -138,5 +139,26 @@
     <update id="decreaseSalesCount">
         UPDATE mall_product SET sales_count = GREATEST(sales_count - #{quantity}, 0) WHERE id = #{id}
     </update>
+
+    <!-- 根据ID批量查询商品 -->
+    <select id="findByIds" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_product
+        WHERE id IN
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- 按分类ID批量统计商品数量 -->
+    <select id="countGroupByCategoryIds" resultType="map">
+        SELECT category_id AS categoryId, COUNT(*) AS cnt
+        FROM mall_product
+        WHERE category_id IN
+        <foreach item="categoryId" collection="categoryIds" open="(" separator="," close=")">
+            #{categoryId}
+        </foreach>
+        GROUP BY category_id
+    </select>
 
 </mapper>

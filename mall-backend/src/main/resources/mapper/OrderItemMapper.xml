@@ -64,4 +64,24 @@
         )
     </insert>
 
+    <!-- 根据订单ID批量查询所有订单明细 -->
+    <select id="findByOrderIds" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_order_item
+        WHERE order_id IN
+        <foreach item="orderId" collection="orderIds" open="(" separator="," close=")">
+            #{orderId}
+        </foreach>
+        ORDER BY order_id, id
+    </select>
+
+    <!-- 根据订单ID列表批量删除订单明细 -->
+    <delete id="deleteByOrderIds">
+        DELETE FROM mall_order_item
+        WHERE order_id IN
+        <foreach item="orderId" collection="orderIds" open="(" separator="," close=")">
+            #{orderId}
+        </foreach>
+    </delete>
+
 </mapper>

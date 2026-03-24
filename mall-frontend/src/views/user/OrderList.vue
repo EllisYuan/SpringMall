@@ -4,8 +4,14 @@
 
       <h1 class="page-title">我的订单</h1>
 
+      <!-- Archive mode banner -->
+      <div v-if="showingArchive" class="archive-banner">
+        <span>正在查看历史订单</span>
+        <button class="archive-back-btn" @click="exitArchiveMode">返回当前订单</button>
+      </div>
+
       <!-- Status filter -->
-      <div class="status-tabs">
+      <div v-if="!showingArchive" class="status-tabs">
         <button
           v-for="tab in statusTabs"
           :key="tab.value"
@@ -50,22 +56,22 @@
             <div class="order-actions">
               <button class="link-btn" @click="goToDetail(order.orderNo)">查看详情</button>
               <button
-                v-if="order.status === 'UNPAID'"
+                v-if="order.status === 'UNPAID' && !showingArchive"
                 class="action-btn action-btn--fill"
                 @click="goToPay(order.orderNo)"
               >去支付</button>
               <button
-                v-if="order.status === 'UNPAID' || order.status === 'PAID'"
+                v-if="(order.status === 'UNPAID' || order.status === 'PAID') && !showingArchive"
                 class="action-btn action-btn--outline"
                 @click="handleCancel(order.orderNo)"
               >取消订单</button>
               <button
-                v-if="order.status === 'SHIPPED'"
+                v-if="order.status === 'SHIPPED' && !showingArchive"
                 class="action-btn action-btn--fill"
                 @click="handleConfirm(order.orderNo)"
               >确认收货</button>
               <button
-                v-if="order.status === 'SHIPPED' || order.status === 'COMPLETED'"
+                v-if="(order.status === 'SHIPPED' || order.status === 'COMPLETED') && !showingArchive"
                 class="action-btn action-btn--muted"
                 @click="handleCancelShipped"
               >取消订单</button>
@@ -75,14 +81,36 @@
         </div>
       </div>
 
+      <!-- Archive entry: shown on last page of normal mode when tab is ALL -->
+      <div
+        v-if="isLastPage && !showingArchive && activeStatus === 'ALL' && orders.length > 0"
+        class="archive-entry"
+        @click="enterArchiveMode"
+      >
+        查看更早的历史订单 &gt;
+      </div>
+
+      <!-- Pagination -->
+      <div v-if="total > 0" class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @current-change="handlePageChange"
+          @size-change="handleSizeChange"
+        />
+      </div>
+
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getOrders, getOrdersByStatus, cancelOrder, confirmOrder } from '@/api/order'
+import { getOrders, getOrdersByStatus, cancelOrder, confirmOrder, getArchivedOrders } from '@/api/order'
 import { formatPrice, formatDate } from '@/utils/format'
 import { ORDER_STATUS_TEXT, ORDER_STATUS_TAG_TYPE } from '@/utils/constants'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -94,6 +122,10 @@ const router = useRouter()
 const activeStatus = ref('ALL')
 const orders = ref([])
 const loading = ref(false)
+const currentPage = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
+const showingArchive = ref(false)
 
 const statusText = ORDER_STATUS_TEXT
 const statusTagType = ORDER_STATUS_TAG_TYPE
@@ -106,16 +138,21 @@ const statusTabs = [
   { value: 'COMPLETED', label: '已完成' }
 ]
 
+const isLastPage = computed(() => {
+  return total.value > 0 && currentPage.value >= Math.ceil(total.value / pageSize.value)
+})
+
 const fetchOrders = async () => {
   loading.value = true
   try {
     let data
     if (activeStatus.value === 'ALL') {
-      data = await getOrders()
+      data = await getOrders({ page: currentPage.value, size: pageSize.value })
     } else {
-      data = await getOrdersByStatus(activeStatus.value)
+      data = await getOrdersByStatus(activeStatus.value, { page: currentPage.value, size: pageSize.value })
     }
-    orders.value = data.content || data || []
+    orders.value = data.list || data.content || data || []
+    total.value = data.total || 0
   } catch (error) {
     console.error('获取订单失败:', error)
   } finally {
@@ -123,9 +160,54 @@ const fetchOrders = async () => {
   }
 }
 
+const fetchArchiveOrders = async () => {
+  loading.value = true
+  try {
+    const data = await getArchivedOrders({ page: currentPage.value, size: pageSize.value })
+    orders.value = data.list || data.content || data || []
+    total.value = data.total || 0
+  } catch (error) {
+    console.error('获取归档订单失败:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const enterArchiveMode = () => {
+  showingArchive.value = true
+  currentPage.value = 1
+  fetchArchiveOrders()
+}
+
+const exitArchiveMode = () => {
+  showingArchive.value = false
+  currentPage.value = 1
+  fetchOrders()
+}
+
 const handleTabChange = (status) => {
   activeStatus.value = status
+  currentPage.value = 1
   fetchOrders()
+}
+
+const handlePageChange = (page) => {
+  currentPage.value = page
+  if (showingArchive.value) {
+    fetchArchiveOrders()
+  } else {
+    fetchOrders()
+  }
+}
+
+const handleSizeChange = (size) => {
+  pageSize.value = size
+  currentPage.value = 1
+  if (showingArchive.value) {
+    fetchArchiveOrders()
+  } else {
+    fetchOrders()
+  }
 }
 
 const goToDetail = (orderNo) => router.push(`/orders/${orderNo}`)
@@ -369,5 +451,57 @@ onMounted(fetchOrders)
     border-color: $border-lighter;
     &:hover { color: $text-secondary; border-color: $border-light; }
   }
+}
+
+// Archive entry
+.archive-entry {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 0;
+  margin-top: 16px;
+  color: #999;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.2s;
+
+  &:hover {
+    color: #666;
+  }
+}
+
+// Archive mode banner
+.archive-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: $spacing-xl;
+  background: #f5f5f5;
+  border: 1px solid $border-light;
+  color: $text-secondary;
+  font-size: $font-size-sm;
+}
+
+.archive-back-btn {
+  background: none;
+  border: 1px solid $border-base;
+  padding: 4px 12px;
+  font-size: $font-size-xs;
+  color: $text-primary;
+  cursor: pointer;
+  font-family: $font-family;
+  transition: border-color $transition-base;
+
+  &:hover {
+    border-color: $primary-color;
+  }
+}
+
+// Pagination
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: $spacing-xl;
 }
 </style>
