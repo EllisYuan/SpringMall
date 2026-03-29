@@ -2,6 +2,7 @@ package site.geekie.shop.shoppingmall.converter;
 
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import site.geekie.shop.shoppingmall.dto.CartItemDTO;
 import site.geekie.shop.shoppingmall.entity.CartItemDO;
 import site.geekie.shop.shoppingmall.entity.ProductDO;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
@@ -19,6 +20,20 @@ import java.util.stream.Collectors;
  */
 @Mapper(componentModel = "spring")
 public interface CartItemConverter {
+
+    /**
+     * 将 CartItemDTO 转换为 CartItemDO（新增场景）
+     * id、userId、checked、createdAt、updatedAt 由 Service 层或数据库处理
+     *
+     * @param dto 购物车请求DTO
+     * @return 购物车项DO（userId 和 checked 需 Service 层单独赋值）
+     */
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "userId", ignore = true)
+    @Mapping(target = "checked", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    CartItemDO toDO(CartItemDTO dto);
 
     /**
      * 将 CartItemDO 转换为 CartItemVO（基础映射）

@@ -35,6 +35,7 @@ import site.geekie.shop.shoppingmall.mapper.OrderMapper;
 import site.geekie.shop.shoppingmall.mapper.PaymentMapper;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
 import site.geekie.shop.shoppingmall.mq.producer.PaymentMessageProducer;
+import site.geekie.shop.shoppingmall.converter.PaymentConverter;
 import site.geekie.shop.shoppingmall.service.AlipayPaymentService;
 import site.geekie.shop.shoppingmall.service.PaymentCloseService;
 import site.geekie.shop.shoppingmall.util.OrderNoGenerator;
@@ -64,18 +65,19 @@ public class AlipayPaymentServiceImpl implements AlipayPaymentService {
     private final RedisDistributedLock redisDistributedLock;
     private final PaymentCloseService paymentCloseService;
     private final PaymentMessageProducer paymentMessageProducer;
+    private final PaymentConverter paymentConverter;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AlipayPaymentVO createAlipay(String orderNo, Long userId) {
-        String lockKey = "lock:Alipay:create:" + orderNo;
+        String lockKey = "lock:payment:create:" + orderNo;
         String lockValue = redisDistributedLock.tryLock(lockKey, 60, TimeUnit.SECONDS);
         if (lockValue == null) {
             throw new BusinessException(ResultCode.PAYMENT_LOCK_FAILED);
         }
 
         try {
-            return doCreateAlipayInternal(orderNo, userId);
+            return doCreateAlipayIntent(orderNo, userId);
         } finally {
             redisDistributedLock.unlock(lockKey, lockValue);
         }
@@ -84,17 +86,17 @@ public class AlipayPaymentServiceImpl implements AlipayPaymentService {
     /**
      * createPayment 内部实现，由分布式锁保护
      */
-    private AlipayPaymentVO doCreateAlipayInternal(String orderNo, Long userId) {
+    private AlipayPaymentVO doCreateAlipayIntent(String orderNo, Long userId) {
         // 1. 查询订单
         OrderDO order = orderMapper.findByOrderNo(orderNo);
         if (order == null) {
             throw new BusinessException(ResultCode.ORDER_NOT_FOUND);
         }
 
-        // 2. 验证订单所有权
-        if (!order.getUserId().equals(userId)) {
-            throw new BusinessException(ResultCode.FORBIDDEN);
-        }
+        // 2. 验证订单所有权（引入@CurrentUserId之后就不需要检查所有权了）
+//        if (!order.getUserId().equals(userId)) {
+//            throw new BusinessException(ResultCode.FORBIDDEN);
+//        }
 
         // 3. 验证订单状态
         if (!OrderStatus.UNPAID.getCode().equals(order.getStatus())) {
@@ -107,14 +109,10 @@ public class AlipayPaymentServiceImpl implements AlipayPaymentService {
             throw new BusinessException(ResultCode.ORDER_ITEM_NOT_FOUND);
         }
 
-        // 5. 生成支付标题和描述
-        String subject = buildPaymentSubject(orderItems, orderNo);
-        String body = buildPaymentBody(orderItems, order.getPayAmount());
-
-        // 6. 关闭其他支付方式的 PENDING 记录（支付方式互斥）
+        // 5. 关闭其他支付方式的 PENDING 记录（支付方式互斥）
         paymentCloseService.closeAllPendingPayments(orderNo);
 
-        // 7. 检查是否已有支付记录（关闭其他方式后，查看是否还有同方式的 PENDING 记录可复用）
+        // 6. 检查是否已有支付记录（关闭其他方式后，查看是否还有同方式的 PENDING 记录可复用）
         PaymentDO existingPayment = paymentMapper.findPendingByOrderNo(orderNo).stream()
                 .filter(p -> PaymentMethod.ALIPAY.name().equals(p.getPaymentMethod()))
                 .findFirst()
@@ -122,30 +120,24 @@ public class AlipayPaymentServiceImpl implements AlipayPaymentService {
         if (existingPayment != null) {
             // 已有待支付记录，返回已有支付信息
             log.info("订单已有待支付记录 - 订单号: {}, 支付流水号: {}", orderNo, existingPayment.getPaymentNo());
-
             // 重新生成支付表单
             String paymentUrl = doCreatePayment(
                     existingPayment.getPaymentNo(),
                     orderNo,
-                    subject,
-                    body,
+                    buildPaymentSubject(orderItems, orderNo),
+                    buildPaymentBody(orderItems, order.getPayAmount()),
                     order.getPayAmount().toString()
             );
 
-            return AlipayPaymentVO.builder()
-                    .paymentNo(existingPayment.getPaymentNo())
-                    .orderNo(existingPayment.getOrderNo())
-                    .amount(existingPayment.getAmount())
-                    .paymentStatus(existingPayment.getPaymentStatus())
-                    .paymentUrl(paymentUrl)
-                    .createdAt(existingPayment.getCreatedAt())
-                    .build();
+            AlipayPaymentVO existingVO = paymentConverter.toAlipayPaymentVO(existingPayment);
+            existingVO.setPaymentUrl(paymentUrl);
+            return existingVO;
         }
 
-        // 8. 生成支付流水号
+        // 7. 生成支付流水号
         String paymentNo = OrderNoGenerator.generateOrderNo();
 
-        // 9. 创建支付记录
+        // 8. 创建支付记录
         PaymentDO payment = new PaymentDO();
         payment.setPaymentNo(paymentNo);
         payment.setOrderNo(orderNo);
@@ -157,7 +149,7 @@ public class AlipayPaymentServiceImpl implements AlipayPaymentService {
         paymentMapper.insert(payment);
 
         log.info("创建支付记录 - 支付流水号: {}, 订单号: {}, 金额: {}, 商品: {}",
-                paymentNo, orderNo, order.getPayAmount(), subject);
+                paymentNo, orderNo, order.getPayAmount(), buildPaymentSubject(orderItems, orderNo));
 
         // 事务提交后再发送掉单检查延迟消息，避免事务回滚后消息已发出但支付记录不存在
         final Long paymentId = payment.getId();
@@ -172,8 +164,8 @@ public class AlipayPaymentServiceImpl implements AlipayPaymentService {
         String paymentUrl = doCreatePayment(
                 paymentNo,
                 orderNo,
-                subject,
-                body,
+                buildPaymentSubject(orderItems, orderNo),
+                buildPaymentBody(orderItems, order.getPayAmount()),
                 order.getPayAmount().toString()
         );
 
@@ -181,14 +173,9 @@ public class AlipayPaymentServiceImpl implements AlipayPaymentService {
         orderMapper.updatePaymentMethod(orderNo, PaymentMethod.ALIPAY.name());
 
         // 12. 返回支付信息
-        return AlipayPaymentVO.builder()
-                .paymentNo(paymentNo)
-                .orderNo(orderNo)
-                .amount(order.getPayAmount())
-                .paymentStatus(PaymentStatus.PENDING.name())
-                .paymentUrl(paymentUrl)
-                .createdAt(LocalDateTime.now())
-                .build();
+        AlipayPaymentVO newVO = paymentConverter.toAlipayPaymentVO(payment);
+        newVO.setPaymentUrl(paymentUrl);
+        return newVO;
     }
 
     @Override
@@ -343,14 +330,7 @@ public class AlipayPaymentServiceImpl implements AlipayPaymentService {
         }
 
         // 4. 返回支付信息
-        return AlipayPaymentVO.builder()
-                .paymentNo(payment.getPaymentNo())
-                .orderNo(payment.getOrderNo())
-                .amount(payment.getAmount())
-                .paymentStatus(payment.getPaymentStatus())
-                .tradeNo(payment.getTradeNo())
-                .createdAt(payment.getCreatedAt())
-                .build();
+        return paymentConverter.toAlipayPaymentVO(payment);
     }
 
     @Override

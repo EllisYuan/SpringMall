@@ -14,6 +14,7 @@ import site.geekie.shop.shoppingmall.entity.RefundDO;
 import site.geekie.shop.shoppingmall.exception.BusinessException;
 import site.geekie.shop.shoppingmall.mapper.PaymentMapper;
 import site.geekie.shop.shoppingmall.mapper.RefundMapper;
+import site.geekie.shop.shoppingmall.converter.PaymentConverter;
 import site.geekie.shop.shoppingmall.service.AlipayPaymentService;
 import site.geekie.shop.shoppingmall.service.PaymentService;
 import site.geekie.shop.shoppingmall.service.StripeService;
@@ -37,6 +38,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final AlipayPaymentService alipayPaymentService;
     private final StripeService stripeService;
     private final ObjectProvider<WxPayService> wxPayServiceProvider;
+    private final PaymentConverter paymentConverter;
 
     @Override
     public PaymentVO getPaymentByNo(String paymentNo, Long userId) {
@@ -72,15 +74,7 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BusinessException(ResultCode.PAYMENT_NOT_FOUND);
         }
 
-        return PaymentVO.builder()
-                .paymentNo(refreshed.getPaymentNo())
-                .orderNo(refreshed.getOrderNo())
-                .amount(refreshed.getAmount())
-                .paymentMethod(refreshed.getPaymentMethod())
-                .paymentStatus(refreshed.getPaymentStatus())
-                .tradeNo(refreshed.getTradeNo())
-                .createdAt(refreshed.getCreatedAt())
-                .build();
+        return paymentConverter.toPaymentVO(refreshed);
     }
 
     @Override

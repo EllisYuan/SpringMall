@@ -55,14 +55,8 @@ public class AddressServiceImpl implements AddressService {
     @Override
     @Transactional
     public AddressVO addAddress(AddressDTO request, Long userId) {
-        AddressDO address = new AddressDO();
+        AddressDO address = addressConverter.toDO(request);
         address.setUserId(userId);
-        address.setReceiverName(request.getReceiverName());
-        address.setPhone(request.getPhone());
-        address.setProvince(request.getProvince());
-        address.setCity(request.getCity());
-        address.setDistrict(request.getDistrict());
-        address.setDetailAddress(request.getDetailAddress());
 
         // 如果是第一个地址或者指定为默认，设为默认地址
         int count = addressMapper.countByUserId(userId);
@@ -84,12 +78,7 @@ public class AddressServiceImpl implements AddressService {
     public AddressVO updateAddress(Long id, AddressDTO request, Long userId) {
         AddressDO address = getAddressAndCheckOwner(id, userId);
 
-        address.setReceiverName(request.getReceiverName());
-        address.setPhone(request.getPhone());
-        address.setProvince(request.getProvince());
-        address.setCity(request.getCity());
-        address.setDistrict(request.getDistrict());
-        address.setDetailAddress(request.getDetailAddress());
+        addressConverter.updateDOFromDTO(request, address);
 
         // 如果要设置为默认地址
         if (request.getIsDefault() != null && request.getIsDefault() == 1 && address.getIsDefault() == 0) {

@@ -118,16 +118,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         // 2. 创建商品
-        ProductDO product = new ProductDO();
-        product.setCategoryId(request.getCategoryId());
-        product.setName(request.getName());
-        product.setSubtitle(request.getSubtitle());
-        product.setMainImage(request.getMainImage());
-        product.setImages(request.getImages());
-        product.setDetail(request.getDetail());
-        product.setPrice(request.getPrice());
-        product.setStock(request.getStock());
-        product.setStatus(request.getStatus());
+        ProductDO product = productConverter.toDO(request);
 
         productMapper.insert(product);
         // 同步 Redis 库存
@@ -160,15 +151,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         // 3. 更新商品信息
-        product.setCategoryId(request.getCategoryId());
-        product.setName(request.getName());
-        product.setSubtitle(request.getSubtitle());
-        product.setMainImage(request.getMainImage());
-        product.setImages(request.getImages());
-        product.setDetail(request.getDetail());
-        product.setPrice(request.getPrice());
-        product.setStock(request.getStock());
-        product.setStatus(request.getStatus());
+        productConverter.updateDOFromDTO(request, product);
 
         productMapper.updateById(product);
         // 同步 Redis 库存

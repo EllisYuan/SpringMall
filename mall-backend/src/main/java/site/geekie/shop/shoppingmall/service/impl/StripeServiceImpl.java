@@ -33,6 +33,8 @@ import site.geekie.shop.shoppingmall.mapper.PaymentMapper;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
 import site.geekie.shop.shoppingmall.mapper.RefundMapper;
 import site.geekie.shop.shoppingmall.mq.producer.PaymentMessageProducer;
+import site.geekie.shop.shoppingmall.converter.PaymentConverter;
+import site.geekie.shop.shoppingmall.converter.RefundConverter;
 import site.geekie.shop.shoppingmall.service.PaymentCloseService;
 import site.geekie.shop.shoppingmall.service.StripeService;
 import site.geekie.shop.shoppingmall.util.OrderNoGenerator;
@@ -65,6 +67,8 @@ public class StripeServiceImpl implements StripeService {
     private final RedisDistributedLock redisDistributedLock;
     private final PaymentCloseService paymentCloseService;
     private final PaymentMessageProducer paymentMessageProducer;
+    private final PaymentConverter paymentConverter;
+    private final RefundConverter refundConverter;
 
     @Value("${stripe.secret-key}")
     private String stripeSecretKey;
@@ -83,15 +87,15 @@ public class StripeServiceImpl implements StripeService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public StripePaymentVO createStripe(CreateStripePaymentDTO request, Long userId) {
-        String lockKey = "lock:payment:create:" + request.getOrderNo();
+    public StripePaymentVO createStripe(String orderNo, Long userId) {
+        String lockKey = "lock:payment:create:" + orderNo;
         String lockValue = redisDistributedLock.tryLock(lockKey, 60, TimeUnit.SECONDS);
         if (lockValue == null) {
             throw new BusinessException(ResultCode.PAYMENT_LOCK_FAILED);
         }
 
         try {
-            return doCreateStripeIntent(request, userId);
+            return doCreateStripeIntent(orderNo, userId);
         } finally {
             redisDistributedLock.unlock(lockKey, lockValue);
         }
@@ -100,51 +104,44 @@ public class StripeServiceImpl implements StripeService {
     /**
      * createPaymentIntent 内部实现，由分布式锁保护
      */
-    private StripePaymentVO doCreateStripeIntent(CreateStripePaymentDTO request, Long userId) {
+    private StripePaymentVO doCreateStripeIntent(String orderNo, Long userId) {
         Stripe.apiKey = stripeSecretKey;
 
         // 1. 查询订单
-        OrderDO order = orderMapper.findByOrderNo(request.getOrderNo());
+        OrderDO order = orderMapper.findByOrderNo(orderNo);
         if (order == null) {
             throw new BusinessException(ResultCode.ORDER_NOT_FOUND);
         }
 
-        // 2. 验证订单所有权
-        if (!order.getUserId().equals(userId)) {
-            throw new BusinessException(ResultCode.FORBIDDEN);
-        }
+        // 2. 验证订单所有权（引入@CurrentUserId之后就不需要检查所有权了）
+//        if (!order.getUserId().equals(userId)) {
+//            throw new BusinessException(ResultCode.FORBIDDEN);
+//        }
 
         // 3. 验证订单状态
         if (!OrderStatus.UNPAID.getCode().equals(order.getStatus())) {
             throw new BusinessException(ResultCode.INVALID_ORDER_STATUS);
         }
 
-        // 4. 关闭其他支付方式的 PENDING 记录（支付方式互斥）
-        paymentCloseService.closeAllPendingPayments(request.getOrderNo());
+        // 4. 查询订单商品明细
+        List<OrderItemDO> orderItems = orderItemMapper.findByOrderId(order.getId());
+        if (orderItems == null || orderItems.isEmpty()) {
+            throw new BusinessException(ResultCode.ORDER_ITEM_NOT_FOUND);
+        }
 
-        // 5. 检查是否已有 Stripe PENDING 支付记录可复用
-        PaymentDO existingPayment = paymentMapper.findPendingByOrderNo(request.getOrderNo()).stream()
+        // 5. 关闭其他支付方式的 PENDING 记录（支付方式互斥）
+        paymentCloseService.closeAllPendingPayments(orderNo);
+
+        // 6. 检查是否已有 Stripe PENDING 支付记录可复用
+        PaymentDO existingPayment = paymentMapper.findPendingByOrderNo(orderNo).stream()
                 .filter(p -> PaymentMethod.STRIPE.name().equals(p.getPaymentMethod()))
                 .filter(p -> p.getCodeUrl() != null)
                 .findFirst()
                 .orElse(null);
         if (existingPayment != null) {
             log.info("订单已有 Stripe Checkout Session 记录 - 订单号: {}, 支付流水号: {}",
-                request.getOrderNo(), existingPayment.getPaymentNo());
-            return StripePaymentVO.builder()
-                .paymentNo(existingPayment.getPaymentNo())
-                .sessionUrl(existingPayment.getCodeUrl())
-                .sessionId(existingPayment.getTradeNo())
-                .orderNo(existingPayment.getOrderNo())
-                .amount(existingPayment.getAmount())
-                .build();
-        }
-
-        // 6. 查询订单商品列表
-        List<OrderItemDO> orderItems = orderItemMapper.findByOrderNo(request.getOrderNo());
-        if (orderItems == null || orderItems.isEmpty()) {
-            log.error("订单商品列表为空 - 订单号: {}", request.getOrderNo());
-            throw new BusinessException(ResultCode.ORDER_ITEM_NOT_FOUND);
+                    orderNo, existingPayment.getPaymentNo());
+            return paymentConverter.toStripePaymentVO(existingPayment);
         }
 
         // 7. 生成支付流水号
@@ -152,10 +149,11 @@ public class StripeServiceImpl implements StripeService {
 
         // 8. 构建 Checkout Session 回调 URL
         String sessionSuccessUrl = successUrl + "?paymentNo=" + paymentNo;
-        String sessionCancelUrl = cancelUrl.replace("{ORDER_NO}", request.getOrderNo());
+        String sessionCancelUrl = cancelUrl.replace("{ORDER_NO}", orderNo);
 
+        // 9. 构建 Checkout Session 页面商品图片、详情信息
         try {
-            // 8. 为每个商品创建 line_item
+            //为每个商品创建 line_item
             List<SessionCreateParams.LineItem> lineItems = new ArrayList<>();
 
             for (OrderItemDO item : orderItems) {
@@ -191,7 +189,7 @@ public class StripeServiceImpl implements StripeService {
                 );
             }
 
-            // 9. 创建 Checkout Session (Adaptive Pricing 模式 + 自定义外观)
+            // 10. 创建 Checkout Session (Adaptive Pricing 模式 + 自定义外观)
             SessionCreateParams params = SessionCreateParams.builder()
                 .setMode(SessionCreateParams.Mode.PAYMENT)
                 .setSuccessUrl(sessionSuccessUrl)
@@ -199,7 +197,7 @@ public class StripeServiceImpl implements StripeService {
                 .addAllLineItem(lineItems)  // 批量添加所有商品
 
                 // 元数据
-                .putMetadata("order_no", request.getOrderNo())
+                .putMetadata("order_no", orderNo)
                 .putMetadata("payment_no", paymentNo)
                 .putMetadata("user_id", userId.toString())
 
@@ -244,10 +242,10 @@ public class StripeServiceImpl implements StripeService {
 
             Session session = Session.create(params);
 
-            // 8. 创建支付记录
+            // 11. 创建支付记录
             PaymentDO payment = new PaymentDO();
             payment.setPaymentNo(paymentNo);
-            payment.setOrderNo(request.getOrderNo());
+            payment.setOrderNo(orderNo);
             payment.setUserId(userId);
             payment.setAmount(order.getPayAmount());
             payment.setPaymentMethod(PaymentMethod.STRIPE.name());
@@ -258,10 +256,10 @@ public class StripeServiceImpl implements StripeService {
             paymentMapper.insert(payment);
 
             log.info("创建 Stripe Checkout Session - 支付流水号: {}, 订单号: {}, 金额: {} CNY, Session ID: {}, 商品数量: {}",
-                paymentNo, request.getOrderNo(), order.getPayAmount(), session.getId(), lineItems.size());
+                paymentNo, orderNo, order.getPayAmount(), session.getId(), lineItems.size());
 
             // 事务提交后再发送掉单检查延迟消息，避免事务回滚后消息已发出但支付记录不存在
-            final String finalOrderNo = request.getOrderNo();
+            final String finalOrderNo = orderNo;
             final Long paymentId = payment.getId();
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -270,17 +268,11 @@ public class StripeServiceImpl implements StripeService {
                 }
             });
 
-            // 9. 更新订单支付方式
-            orderMapper.updatePaymentMethod(request.getOrderNo(), PaymentMethod.STRIPE.name());
+            // 12. 更新订单支付方式
+            orderMapper.updatePaymentMethod(orderNo, PaymentMethod.STRIPE.name());
 
-            // 10. 返回支付信息
-            return StripePaymentVO.builder()
-                .paymentNo(paymentNo)
-                .sessionUrl(session.getUrl())
-                .sessionId(session.getId())
-                .orderNo(request.getOrderNo())
-                .amount(order.getPayAmount())
-                .build();
+            // 13. 返回支付信息
+            return paymentConverter.toStripePaymentVO(payment);
 
         } catch (StripeException e) {
             log.error("创建 Stripe Checkout Session 失败: {}", e.getMessage(), e);
@@ -302,14 +294,7 @@ public class StripeServiceImpl implements StripeService {
         }
 
         // 3. 返回支付信息
-        return StripePaymentVO.builder()
-            .paymentNo(payment.getPaymentNo())
-            .sessionUrl(payment.getCodeUrl())
-            .sessionId(payment.getTradeNo())
-            .orderNo(payment.getOrderNo())
-            .amount(payment.getAmount())
-            .status(payment.getPaymentStatus())
-            .build();
+        return paymentConverter.toStripePaymentVO(payment);
     }
 
     @Override
@@ -374,14 +359,7 @@ public class StripeServiceImpl implements StripeService {
         if (existingRefund != null && "SUCCESS".equals(existingRefund.getRefundStatus())) {
             log.warn("支付已退款 - 返回已有退款记录，支付流水号: {}", request.getPaymentNo());
             // 幂等性：返回已有退款记录，而不是抛出异常
-            return StripeRefundVO.builder()
-                .refundNo(existingRefund.getRefundNo())
-                .refundId(existingRefund.getTradeNo())
-                .paymentNo(request.getPaymentNo())
-                .refundAmount(existingRefund.getRefundAmount())
-                .status("SUCCESS")
-                .reason(existingRefund.getRefundReason())
-                .build();
+            return refundConverter.toStripeRefundVO(existingRefund);
         }
 
         // 5. 检查支付记录是否已标记为已退款
@@ -389,14 +367,7 @@ public class StripeServiceImpl implements StripeService {
             log.warn("支付记录已标记为已退款 - 支付流水号: {}", request.getPaymentNo());
             // 如果支付已退款但没有退款记录，返回现有信息
             if (existingRefund != null) {
-                return StripeRefundVO.builder()
-                    .refundNo(existingRefund.getRefundNo())
-                    .refundId(existingRefund.getTradeNo())
-                    .paymentNo(request.getPaymentNo())
-                    .refundAmount(existingRefund.getRefundAmount())
-                    .status(existingRefund.getRefundStatus())
-                    .reason(existingRefund.getRefundReason())
-                    .build();
+                return refundConverter.toStripeRefundVO(existingRefund);
             }
         }
 
@@ -441,14 +412,7 @@ public class StripeServiceImpl implements StripeService {
                 refundNo, request.getPaymentNo(), request.getRefundAmount(), refund.getId());
 
             // 9. 返回退款响应
-            return StripeRefundVO.builder()
-                .refundNo(refundNo)
-                .refundId(refund.getId())
-                .paymentNo(request.getPaymentNo())
-                .refundAmount(request.getRefundAmount())
-                .status("PROCESSING")
-                .reason(request.getReason())
-                .build();
+            return refundConverter.toStripeRefundVO(refundDO);
 
         } catch (StripeException e) {
             // 处理 Stripe 特定错误
@@ -463,14 +427,7 @@ public class StripeServiceImpl implements StripeService {
                     existingRefund.setRefundTime(LocalDateTime.now());
                     refundMapper.updateById(existingRefund);
 
-                    return StripeRefundVO.builder()
-                        .refundNo(existingRefund.getRefundNo())
-                        .refundId(existingRefund.getTradeNo())
-                        .paymentNo(request.getPaymentNo())
-                        .refundAmount(existingRefund.getRefundAmount())
-                        .status("SUCCESS")
-                        .reason(existingRefund.getRefundReason())
-                        .build();
+                    return refundConverter.toStripeRefundVO(existingRefund);
                 } else {
                     // 创建新的退款记录（SUCCESS 状态）
                     RefundDO refundDO = new RefundDO();
@@ -489,14 +446,7 @@ public class StripeServiceImpl implements StripeService {
                     payment.setPaymentStatus(PaymentStatus.REFUNDED.name());
                     paymentMapper.updateById(payment);
 
-                    return StripeRefundVO.builder()
-                        .refundNo(refundNo)
-                        .refundId(payment.getTradeNo())
-                        .paymentNo(request.getPaymentNo())
-                        .refundAmount(request.getRefundAmount())
-                        .status("SUCCESS")
-                        .reason(request.getReason())
-                        .build();
+                    return refundConverter.toStripeRefundVO(refundDO);
                 }
             }
 

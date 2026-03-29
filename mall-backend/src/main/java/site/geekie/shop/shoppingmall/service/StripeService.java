@@ -14,11 +14,11 @@ public interface StripeService {
     /**
      * 创建支付意图
      *
-     * @param request 支付请求
+     * @param orderNo 支付订单号
      * @param userId 用户ID
      * @return 支付响应（包含 client_secret）
      */
-    StripePaymentVO createStripe(CreateStripePaymentDTO request, Long userId);
+    StripePaymentVO createStripe(String orderNo, Long userId);
 
     /**
      * 查询支付状态

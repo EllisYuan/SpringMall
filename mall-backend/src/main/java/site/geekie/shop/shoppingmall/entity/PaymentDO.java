@@ -38,7 +38,7 @@ public class PaymentDO {
     private BigDecimal amount;
 
     /**
-     * 支付方式（ALIPAY/WECHAT）
+     * 支付方式（ALIPAY/STRIPE）
      */
     private String paymentMethod;
 

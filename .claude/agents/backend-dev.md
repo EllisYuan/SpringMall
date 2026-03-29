@@ -204,9 +204,25 @@ Mapper 层：返回 DO
 - Spring / 认证异常会返回真实的 HTTP 错误码（400、401、403、500）。
 - 若需要新的错误码，在 `common/ResultCode.java` 中按已有范围新增。
 
-### 数据类型转换 
+### 数据类型转换（MapStruct 规范）
 
-使用Mapstruct
+所有 DO / VO / DTO 之间的转换必须通过 `converter/` 包下的 `XxxConverter` 接口完成。
+
+**基本规则**：
+1. 统一使用 `@Mapper(componentModel = "spring")`，通过 Spring 依赖注入使用
+2. 标准方法命名：
+   - `toDO(DTO)` — DTO → DO，用于新增场景
+   - `updateDOFromDTO(DTO, @MappingTarget DO)` — DTO → DO 就地更新，用于修改场景
+   - `toVO(DO)` — DO → VO
+   - `toVOList(List<DO>)` — 批量 DO → VO
+3. `@Mapping(target="xxx", ignore=true)` 规则：id、createdAt、updatedAt 必须 ignore；由 Service 层业务逻辑决定的字段（如 password、role、status、userId）也应 ignore
+4. 禁止在 Service 中手动 `new DO()` / `new VO()` + setter 链进行转换（多源构建除外）
+5. 禁止在 Service 中编写私有 `convertToXxx()` 方法
+6. 复杂映射使用 `default` 方法实现；批量转换注意 N+1 优化
+
+**允许手动构建的例外**：
+- `OrderDO` / `OrderItemDO`：字段来自多个数据源（Address、CartItem、Product 等计算），手动构建合理
+- `PaymentDO` / `RefundDO`：DO 由第三方支付回调数据构建，手动赋值合理
 
 ---
 

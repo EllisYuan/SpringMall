@@ -73,11 +73,8 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(ResultCode.PHONE_ALREADY_EXISTS);
         }
 
-        UserDO user = new UserDO();
-        user.setUsername(request.getUsername());
+        UserDO user = userConverter.toDO(request);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setEmail(request.getEmail());
-        user.setPhone(request.getPhone());
         user.setRole("USER");
         user.setStatus(1);
 

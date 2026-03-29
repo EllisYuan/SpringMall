@@ -86,10 +86,8 @@ public class CartServiceImpl implements CartService {
             return cartItemConverter.toVO(existingItem, productMapper);
         } else {
             // 新增购物车项
-            CartItemDO cartItem = new CartItemDO();
+            CartItemDO cartItem = cartItemConverter.toDO(request);
             cartItem.setUserId(userId);
-            cartItem.setProductId(request.getProductId());
-            cartItem.setQuantity(request.getQuantity());
             cartItem.setChecked(1); // 默认选中
 
             cartItemMapper.insert(cartItem);

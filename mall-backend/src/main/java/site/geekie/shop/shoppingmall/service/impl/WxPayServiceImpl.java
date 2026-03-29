@@ -37,6 +37,8 @@ import site.geekie.shop.shoppingmall.mapper.OrderMapper;
 import site.geekie.shop.shoppingmall.mapper.PaymentMapper;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
 import site.geekie.shop.shoppingmall.mapper.RefundMapper;
+import site.geekie.shop.shoppingmall.converter.PaymentConverter;
+import site.geekie.shop.shoppingmall.converter.RefundConverter;
 import site.geekie.shop.shoppingmall.service.WxPayService;
 import site.geekie.shop.shoppingmall.util.OrderNoGenerator;
 import site.geekie.shop.shoppingmall.vo.WxPaymentVO;
@@ -68,6 +70,8 @@ public class WxPayServiceImpl implements WxPayService {
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
     private final ProductMapper productMapper;
+    private final PaymentConverter paymentConverter;
+    private final RefundConverter refundConverter;
 
     @Override
     @Transactional
@@ -141,7 +145,7 @@ public class WxPayServiceImpl implements WxPayService {
                 paymentNo, response.getCodeUrl());
 
             // 10. 转换为VO返回
-            return convertToWxPaymentVO(payment);
+            return paymentConverter.toWxPaymentVO(payment);
 
         } catch (HttpException e) {
             log.error("微信支付HTTP请求失败", e);
@@ -168,7 +172,7 @@ public class WxPayServiceImpl implements WxPayService {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权查看此支付记录");
         }
 
-        return convertToWxPaymentVO(payment);
+        return paymentConverter.toWxPaymentVO(payment);
     }
 
     @Override
@@ -313,7 +317,7 @@ public class WxPayServiceImpl implements WxPayService {
             log.info("微信退款申请成功，退款单号：{}，微信退款单号：{}",
                 refundNo, response.getRefundId());
 
-            return convertToWxRefundVO(refund);
+            return refundConverter.toWxRefundVO(refund);
 
         } catch (HttpException e) {
             log.error("微信退款HTTP请求失败", e);
@@ -383,38 +387,4 @@ public class WxPayServiceImpl implements WxPayService {
         }
     }
 
-    /**
-     * 转换为 WxPaymentVO
-     */
-    private WxPaymentVO convertToWxPaymentVO(PaymentDO payment) {
-        WxPaymentVO vo = new WxPaymentVO();
-        vo.setId(payment.getId());
-        vo.setPaymentNo(payment.getPaymentNo());
-        vo.setOrderNo(payment.getOrderNo());
-        vo.setAmount(payment.getAmount());
-        vo.setPaymentMethod(payment.getPaymentMethod());
-        vo.setPaymentStatus(payment.getPaymentStatus());
-        vo.setCodeUrl(payment.getCodeUrl());
-        vo.setTradeNo(payment.getTradeNo());
-        vo.setCreatedAt(payment.getCreatedAt());
-        vo.setNotifyTime(payment.getNotifyTime());
-        return vo;
-    }
-
-    /**
-     * 转换为 WxRefundVO
-     */
-    private WxRefundVO convertToWxRefundVO(RefundDO refund) {
-        WxRefundVO vo = new WxRefundVO();
-        vo.setId(refund.getId());
-        vo.setRefundNo(refund.getRefundNo());
-        vo.setOrderNo(refund.getOrderNo());
-        vo.setPaymentNo(refund.getPaymentNo());
-        vo.setRefundAmount(refund.getRefundAmount());
-        vo.setRefundReason(refund.getRefundReason());
-        vo.setRefundStatus(refund.getRefundStatus());
-        vo.setRefundTime(refund.getRefundTime());
-        vo.setCreatedAt(refund.getCreatedAt());
-        return vo;
-    }
 }

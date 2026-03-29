@@ -2,6 +2,8 @@ package site.geekie.shop.shoppingmall.converter;
 
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
+import site.geekie.shop.shoppingmall.dto.ProductDTO;
 import site.geekie.shop.shoppingmall.entity.CategoryDO;
 import site.geekie.shop.shoppingmall.entity.ProductDO;
 import site.geekie.shop.shoppingmall.mapper.CategoryMapper;
@@ -29,6 +31,18 @@ public interface ProductConverter {
      */
     @Mapping(target = "categoryName", ignore = true)
     ProductVO toVO(ProductDO product);
+
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "salesCount", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    ProductDO toDO(ProductDTO dto);
+
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "salesCount", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    void updateDOFromDTO(ProductDTO dto, @MappingTarget ProductDO product);
 
     /**
      * 将 ProductDO 转换为 ProductVO 并填充分类名称
