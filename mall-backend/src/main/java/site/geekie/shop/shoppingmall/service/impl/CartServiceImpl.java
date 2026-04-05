@@ -9,10 +9,12 @@ import site.geekie.shop.shoppingmall.converter.CartItemConverter;
 import site.geekie.shop.shoppingmall.dto.CartItemDTO;
 import site.geekie.shop.shoppingmall.entity.CartItemDO;
 import site.geekie.shop.shoppingmall.entity.ProductDO;
+import site.geekie.shop.shoppingmall.entity.SkuDO;
 import site.geekie.shop.shoppingmall.vo.CartItemVO;
 import site.geekie.shop.shoppingmall.exception.BusinessException;
 import site.geekie.shop.shoppingmall.mapper.CartItemMapper;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
+import site.geekie.shop.shoppingmall.mapper.SkuMapper;
 import site.geekie.shop.shoppingmall.service.CartService;
 
 import java.math.BigDecimal;
@@ -29,6 +31,7 @@ public class CartServiceImpl implements CartService {
 
     private final CartItemMapper cartItemMapper;
     private final ProductMapper productMapper;
+    private final SkuMapper skuMapper;
     private final CartItemConverter cartItemConverter;
 
 
@@ -48,7 +51,7 @@ public class CartServiceImpl implements CartService {
     @Override
     public List<CartItemVO> getCartItems(Long userId) {
         List<CartItemDO> cartItems = cartItemMapper.findByUserId(userId);
-        return cartItemConverter.toVOList(cartItems, productMapper);
+        return cartItemConverter.toVOList(cartItems, productMapper, skuMapper);
     }
 
     @Override
@@ -64,34 +67,76 @@ public class CartServiceImpl implements CartService {
             throw new BusinessException(ResultCode.PRODUCT_UNAVAILABLE);
         }
 
-        // 验证库存是否充足
-        if (product.getStock() < request.getQuantity()) {
-            throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
-        }
+        // 根据是否启用 SKU 分支处理
+        if (Integer.valueOf(1).equals(product.getHasSku())) {
+            // === 有 SKU 商品 ===
+            Long skuId = request.getSkuId();
+            if (skuId == null) {
+                // 尝试使用默认 SKU
+                SkuDO defaultSku = skuMapper.findDefaultByProductId(product.getId());
+                if (defaultSku == null) {
+                    throw new BusinessException(ResultCode.SKU_REQUIRED);
+                }
+                skuId = defaultSku.getId();
+            }
 
-        // 检查商品是否已在购物车中
-        CartItemDO existingItem = cartItemMapper.findByUserIdAndProductId(userId, request.getProductId());
+            // 查询并校验 SKU
+            SkuDO sku = skuMapper.findById(skuId);
+            if (sku == null || !sku.getProductId().equals(request.getProductId())) {
+                throw new BusinessException(ResultCode.SKU_NOT_FOUND);
+            }
+            if (!Integer.valueOf(1).equals(sku.getStatus())) {
+                throw new BusinessException(ResultCode.PRODUCT_UNAVAILABLE);
+            }
+            if (sku.getStock() < request.getQuantity()) {
+                throw new BusinessException(ResultCode.SKU_OUT_OF_STOCK);
+            }
 
-        if (existingItem != null) {
-            // 商品已存在，增加数量
-            int newQuantity = existingItem.getQuantity() + request.getQuantity();
+            // 按 userId + productId + skuId 查重
+            CartItemDO existingItem = cartItemMapper.findByUserIdAndProductIdAndSkuId(
+                    userId, request.getProductId(), skuId);
 
-            // 再次验证库存
-            if (product.getStock() < newQuantity) {
+            if (existingItem != null) {
+                int newQuantity = existingItem.getQuantity() + request.getQuantity();
+                if (sku.getStock() < newQuantity) {
+                    throw new BusinessException(ResultCode.SKU_OUT_OF_STOCK);
+                }
+                cartItemMapper.updateQuantity(existingItem.getId(), newQuantity);
+                existingItem.setQuantity(newQuantity);
+                return cartItemConverter.toVO(existingItem, productMapper, skuMapper);
+            } else {
+                CartItemDO cartItem = cartItemConverter.toDO(request);
+                cartItem.setUserId(userId);
+                cartItem.setSkuId(skuId);
+                cartItem.setChecked(1);
+                cartItemMapper.insert(cartItem);
+                return cartItemConverter.toVO(cartItem, productMapper, skuMapper);
+            }
+        } else {
+            // === 无 SKU 商品（原有逻辑） ===
+            if (product.getStock() < request.getQuantity()) {
                 throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
             }
 
-            cartItemMapper.updateQuantity(existingItem.getId(), newQuantity);
-            existingItem.setQuantity(newQuantity);
-            return cartItemConverter.toVO(existingItem, productMapper);
-        } else {
-            // 新增购物车项
-            CartItemDO cartItem = cartItemConverter.toDO(request);
-            cartItem.setUserId(userId);
-            cartItem.setChecked(1); // 默认选中
+            // 按 userId + productId（sku_id = 0）查重
+            CartItemDO existingItem = cartItemMapper.findByUserIdAndProductId(userId, request.getProductId());
 
-            cartItemMapper.insert(cartItem);
-            return cartItemConverter.toVO(cartItem, productMapper);
+            if (existingItem != null) {
+                int newQuantity = existingItem.getQuantity() + request.getQuantity();
+                if (product.getStock() < newQuantity) {
+                    throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
+                }
+                cartItemMapper.updateQuantity(existingItem.getId(), newQuantity);
+                existingItem.setQuantity(newQuantity);
+                return cartItemConverter.toVO(existingItem, productMapper, skuMapper);
+            } else {
+                CartItemDO cartItem = cartItemConverter.toDO(request);
+                cartItem.setUserId(userId);
+                cartItem.setSkuId(0L);
+                cartItem.setChecked(1);
+                cartItemMapper.insert(cartItem);
+                return cartItemConverter.toVO(cartItem, productMapper, skuMapper);
+            }
         }
     }
 
@@ -108,20 +153,29 @@ public class CartServiceImpl implements CartService {
         // 获取购物车项
         CartItemDO cartItem = cartItemMapper.findById(id);
 
-        // 验证商品库存
-        ProductDO product = productMapper.findById(cartItem.getProductId());
-        if (product == null) {
-            throw new BusinessException(ResultCode.PRODUCT_NOT_FOUND);
-        }
-        if (product.getStock() < quantity) {
-            throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
+        // 验证库存
+        if (cartItem.getSkuId() != null && cartItem.getSkuId() > 0) {
+            // 有 SKU：验证 SKU 库存
+            SkuDO sku = skuMapper.findById(cartItem.getSkuId());
+            if (sku == null || sku.getStock() < quantity) {
+                throw new BusinessException(ResultCode.SKU_OUT_OF_STOCK);
+            }
+        } else {
+            // 无 SKU：验证商品库存
+            ProductDO product = productMapper.findById(cartItem.getProductId());
+            if (product == null) {
+                throw new BusinessException(ResultCode.PRODUCT_NOT_FOUND);
+            }
+            if (product.getStock() < quantity) {
+                throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
+            }
         }
 
         // 更新数量
         cartItemMapper.updateQuantity(id, quantity);
         cartItem.setQuantity(quantity);
 
-        return cartItemConverter.toVO(cartItem, productMapper);
+        return cartItemConverter.toVO(cartItem, productMapper, skuMapper);
     }
 
     @Override
@@ -195,10 +249,26 @@ public class CartServiceImpl implements CartService {
 
         BigDecimal total = BigDecimal.ZERO;
         for (CartItemDO item : checkedItems) {
-            ProductDO product = productMap.get(item.getProductId());
-            if (product != null) {
-                BigDecimal itemTotal = product.getPrice().multiply(new BigDecimal(item.getQuantity()));
-                total = total.add(itemTotal);
+            BigDecimal effectivePrice = null;
+
+            // 有 SKU 的购物车项使用 SKU 价格
+            if (item.getSkuId() != null && item.getSkuId() > 0) {
+                SkuDO sku = skuMapper.findById(item.getSkuId());
+                if (sku != null) {
+                    effectivePrice = sku.getPrice();
+                }
+            }
+
+            // 无 SKU 或 SKU 查询失败，使用商品价格
+            if (effectivePrice == null) {
+                ProductDO product = productMap.get(item.getProductId());
+                if (product != null) {
+                    effectivePrice = product.getPrice();
+                }
+            }
+
+            if (effectivePrice != null) {
+                total = total.add(effectivePrice.multiply(new BigDecimal(item.getQuantity())));
             }
         }
 

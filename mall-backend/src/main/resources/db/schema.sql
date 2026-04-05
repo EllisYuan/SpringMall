@@ -234,3 +234,79 @@ INSERT INTO `mall_category` (`name`, `parent_id`, `level`, `sort_order`) VALUES
 ('实体商品', 0, 1, 1),
 ('虚拟商品', 1, 1, 2);
 
+-- ========================================
+-- V4: SKU 规格选项支持（V4_sku_support.sql）
+-- ========================================
+
+-- ----------------------------------------
+-- 11. 商品规格维度表
+-- ----------------------------------------
+CREATE TABLE `mall_product_spec` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '规格ID',
+    `product_id` BIGINT NOT NULL COMMENT '商品ID',
+    `name` VARCHAR(100) NOT NULL COMMENT '规格名称（如颜色、尺码）',
+    `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序值',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_product_id` (`product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品规格维度表';
+
+-- ----------------------------------------
+-- 12. 商品规格选项值表
+-- ----------------------------------------
+CREATE TABLE `mall_product_spec_value` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '规格值ID',
+    `spec_id` BIGINT NOT NULL COMMENT '规格维度ID',
+    `product_id` BIGINT NOT NULL COMMENT '商品ID（冗余，便于查询）',
+    `value` VARCHAR(100) NOT NULL COMMENT '规格值（如红色、XL）',
+    `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序值',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_spec_id` (`spec_id`),
+    KEY `idx_product_id` (`product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品规格选项值表';
+
+-- ----------------------------------------
+-- 13. 商品SKU表
+-- ----------------------------------------
+CREATE TABLE `mall_sku` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'SKU ID',
+    `product_id` BIGINT NOT NULL COMMENT '商品ID',
+    `sku_code` VARCHAR(100) DEFAULT NULL COMMENT 'SKU编码',
+    `spec_value_ids` VARCHAR(500) NOT NULL COMMENT '规格值ID组合（逗号分隔，升序排列）',
+    `spec_desc` VARCHAR(500) NOT NULL COMMENT '规格描述冗余（如"红色,XL"）',
+    `price` DECIMAL(10,2) NOT NULL COMMENT 'SKU价格',
+    `stock` INT NOT NULL DEFAULT 0 COMMENT 'SKU库存',
+    `image` VARCHAR(500) DEFAULT NULL COMMENT 'SKU图片',
+    `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0-禁用 1-启用',
+    `is_default` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认SKU：0-否 1-是',
+    `sales_count` INT NOT NULL DEFAULT 0 COMMENT 'SKU销量',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_product_id` (`product_id`),
+    UNIQUE KEY `uk_product_spec_values` (`product_id`, `spec_value_ids`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品SKU表';
+
+-- ----------------------------------------
+-- 修改现有表：添加 SKU 支持字段
+-- ----------------------------------------
+
+-- mall_product 新增 has_sku 字段
+-- 回滚: ALTER TABLE `mall_product` DROP COLUMN `has_sku`;
+ALTER TABLE `mall_product` ADD COLUMN `has_sku` TINYINT NOT NULL DEFAULT 0 COMMENT '是否启用SKU：0-否 1-是' AFTER `sales_count`;
+
+-- mall_cart_item 新增 sku_id 字段，修改唯一约束
+-- 回滚: ALTER TABLE `mall_cart_item` DROP INDEX `uk_user_product_sku`;
+-- 回滚: ALTER TABLE `mall_cart_item` ADD UNIQUE KEY `uk_user_product` (`user_id`, `product_id`);
+-- 回滚: ALTER TABLE `mall_cart_item` DROP COLUMN `sku_id`;
+ALTER TABLE `mall_cart_item` ADD COLUMN `sku_id` BIGINT NOT NULL DEFAULT 0 COMMENT 'SKU ID（无SKU商品为0，MySQL UNIQUE约束对NULL无效故使用0）' AFTER `product_id`;
+ALTER TABLE `mall_cart_item` DROP INDEX `uk_user_product`;
+ALTER TABLE `mall_cart_item` ADD UNIQUE KEY `uk_user_product_sku` (`user_id`, `product_id`, `sku_id`);
+
+-- mall_order_item 新增 sku_id 和 spec_desc 字段
+-- 回滚: ALTER TABLE `mall_order_item` DROP COLUMN `spec_desc`;
+-- 回滚: ALTER TABLE `mall_order_item` DROP COLUMN `sku_id`;
+ALTER TABLE `mall_order_item` ADD COLUMN `sku_id` BIGINT NOT NULL DEFAULT 0 COMMENT 'SKU ID（无SKU商品为0）' AFTER `product_id`;
+ALTER TABLE `mall_order_item` ADD COLUMN `spec_desc` VARCHAR(500) DEFAULT NULL COMMENT '规格描述快照（如"红色,XL"）' AFTER `product_image`;
+

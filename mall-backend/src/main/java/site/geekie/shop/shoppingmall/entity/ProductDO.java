@@ -69,6 +69,11 @@ public class ProductDO {
     private Integer salesCount;
 
     /**
+     * 是否启用SKU：0-否 1-是
+     */
+    private Integer hasSku;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createdAt;

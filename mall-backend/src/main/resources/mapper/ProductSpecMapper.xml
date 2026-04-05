@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="site.geekie.shop.shoppingmall.mapper.ProductSpecMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="site.geekie.shop.shoppingmall.entity.ProductSpecDO">
+        <id column="id" property="id"/>
+        <result column="product_id" property="productId"/>
+        <result column="name" property="name"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <!-- 基础字段列表 -->
+    <sql id="Base_Column_List">
+        id, product_id, name, sort_order, created_at
+    </sql>
+
+    <!-- 根据商品ID查询所有规格维度 -->
+    <select id="findByProductId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_product_spec
+        WHERE product_id = #{productId}
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <!-- 插入规格维度 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mall_product_spec (product_id, name, sort_order)
+        VALUES (#{productId}, #{name}, #{sortOrder})
+    </insert>
+
+    <!-- 根据商品ID删除所有规格维度 -->
+    <delete id="deleteByProductId">
+        DELETE FROM mall_product_spec WHERE product_id = #{productId}
+    </delete>
+
+</mapper>

@@ -181,4 +181,5 @@ public class StockRedisService {
         stringRedisTemplate.delete(key);
         log.debug("删除库存缓存 - productId: {}", productId);
     }
+
 }

@@ -16,6 +16,7 @@ import site.geekie.shop.shoppingmall.mapper.OrderItemMapper;
 import site.geekie.shop.shoppingmall.mapper.OrderMapper;
 import site.geekie.shop.shoppingmall.mapper.PaymentMapper;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
+import site.geekie.shop.shoppingmall.mapper.SkuMapper;
 import site.geekie.shop.shoppingmall.service.AlipayPaymentService;
 import site.geekie.shop.shoppingmall.service.PaymentCloseService;
 import site.geekie.shop.shoppingmall.service.StripeService;
@@ -37,6 +38,7 @@ public class PaymentCloseServiceImpl implements PaymentCloseService {
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
     private final ProductMapper productMapper;
+    private final SkuMapper skuMapper;
 
     /**
      * StripeService 与本类存在循环依赖，使用 @Lazy 延迟注入以打破循环
@@ -44,13 +46,14 @@ public class PaymentCloseServiceImpl implements PaymentCloseService {
     private final StripeService stripeService;
 
     @Autowired
-    public PaymentCloseServiceImpl(PaymentMapper paymentMapper, @Lazy AlipayPaymentService alipayPaymentService, @Lazy StripeService stripeService, OrderMapper orderMapper, OrderItemMapper orderItemMapper, ProductMapper productMapper) {
+    public PaymentCloseServiceImpl(PaymentMapper paymentMapper, @Lazy AlipayPaymentService alipayPaymentService, @Lazy StripeService stripeService, OrderMapper orderMapper, OrderItemMapper orderItemMapper, ProductMapper productMapper, SkuMapper skuMapper) {
         this.paymentMapper = paymentMapper;
         this.alipayPaymentService = alipayPaymentService;
         this.stripeService = stripeService;
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
         this.productMapper = productMapper;
+        this.skuMapper = skuMapper;
     }
 
     @Override
@@ -100,6 +103,9 @@ public class PaymentCloseServiceImpl implements PaymentCloseService {
                     List<OrderItemDO> items = orderItemMapper.findByOrderId(order.getId());
                     for (OrderItemDO item : items) {
                         productMapper.increaseSalesCount(item.getProductId(), item.getQuantity());
+                        if (item.getSkuId() != null && item.getSkuId() > 0) {
+                            skuMapper.increaseSalesCount(item.getSkuId(), item.getQuantity());
+                        }
                     }
                 }
             }

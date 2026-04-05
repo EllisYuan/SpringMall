@@ -20,6 +20,7 @@ import site.geekie.shop.shoppingmall.mapper.OrderItemMapper;
 import site.geekie.shop.shoppingmall.mapper.OrderMapper;
 import site.geekie.shop.shoppingmall.mapper.PaymentMapper;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
+import site.geekie.shop.shoppingmall.mapper.SkuMapper;
 import site.geekie.shop.shoppingmall.service.AlipayPaymentService;
 import site.geekie.shop.shoppingmall.util.StockRedisService;
 import site.geekie.shop.shoppingmall.service.PaymentCloseService;
@@ -55,6 +56,7 @@ public class PaymentCheckConsumer {
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
     private final ProductMapper productMapper;
+    private final SkuMapper skuMapper;
     private final AlipayPaymentService alipayPaymentService;
     private final StripeService stripeService;
     private final PaymentCloseService paymentCloseService;
@@ -139,6 +141,9 @@ public class PaymentCheckConsumer {
                         List<OrderItemDO> items = orderItemMapper.findByOrderId(order.getId());
                         for (OrderItemDO item : items) {
                             productMapper.increaseSalesCount(item.getProductId(), item.getQuantity());
+                            if (item.getSkuId() != null && item.getSkuId() > 0) {
+                                skuMapper.increaseSalesCount(item.getSkuId(), item.getQuantity());
+                            }
                         }
                     } else {
                         log.warn("掉单补偿：订单状态已被其他线程更新，跳过 - 订单号: {}",
@@ -165,18 +170,29 @@ public class PaymentCheckConsumer {
                         // 查询订单状态，若仍为 UNPAID 则完整关单
                         OrderDO latestOrder = orderMapper.findByOrderNo(finalOrderNo);
                         if (latestOrder != null && OrderStatus.UNPAID.getCode().equals(latestOrder.getStatus())) {
-                            // 恢复库存
+                            // 恢复库存（区分 SKU 商品和普通商品）
                             List<OrderItemDO> orderItems = orderItemMapper.findByOrderId(latestOrder.getId());
+                            List<OrderItemDO> noSkuItems = new java.util.ArrayList<>();
                             for (OrderItemDO item : orderItems) {
-                                productMapper.increaseStock(item.getProductId(), item.getQuantity());
-                                log.debug("掉单补偿恢复库存 - 商品ID: {}, 数量: {}", item.getProductId(), item.getQuantity());
+                                if (item.getSkuId() != null && item.getSkuId() > 0) {
+                                    skuMapper.increaseStock(item.getSkuId(), item.getQuantity());
+                                    log.debug("掉单补偿恢复SKU库存 - SKU_ID: {}, 商品ID: {}, 数量: {}",
+                                            item.getSkuId(), item.getProductId(), item.getQuantity());
+                                } else {
+                                    productMapper.increaseStock(item.getProductId(), item.getQuantity());
+                                    noSkuItems.add(item);
+                                    log.debug("掉单补偿恢复商品库存 - 商品ID: {}, 数量: {}",
+                                            item.getProductId(), item.getQuantity());
+                                }
                             }
 
-                            // 恢复 Redis 库存
-                            try {
-                                stockRedisService.batchRestoreStock(orderItems);
-                            } catch (Exception e) {
-                                log.warn("掉单补偿恢复 Redis 库存异常 - 订单号: {}", finalOrderNo, e);
+                            // 恢复 Redis 库存（仅无 SKU 商品）
+                            if (!noSkuItems.isEmpty()) {
+                                try {
+                                    stockRedisService.batchRestoreStock(noSkuItems);
+                                } catch (Exception e) {
+                                    log.warn("掉单补偿恢复 Redis 库存异常 - 订单号: {}", finalOrderNo, e);
+                                }
                             }
 
                             // 更新订单状态 → CANCELLED

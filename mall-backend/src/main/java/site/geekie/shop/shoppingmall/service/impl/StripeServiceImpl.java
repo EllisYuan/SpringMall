@@ -32,6 +32,7 @@ import site.geekie.shop.shoppingmall.mapper.OrderMapper;
 import site.geekie.shop.shoppingmall.mapper.PaymentMapper;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
 import site.geekie.shop.shoppingmall.mapper.RefundMapper;
+import site.geekie.shop.shoppingmall.mapper.SkuMapper;
 import site.geekie.shop.shoppingmall.mq.producer.PaymentMessageProducer;
 import site.geekie.shop.shoppingmall.converter.PaymentConverter;
 import site.geekie.shop.shoppingmall.converter.RefundConverter;
@@ -63,6 +64,7 @@ public class StripeServiceImpl implements StripeService {
     private final RefundMapper refundMapper;
     private final OrderItemMapper orderItemMapper;
     private final ProductMapper productMapper;
+    private final SkuMapper skuMapper;
     private final StripeConfig stripeConfig;
     private final RedisDistributedLock redisDistributedLock;
     private final PaymentCloseService paymentCloseService;
@@ -562,6 +564,9 @@ public class StripeServiceImpl implements StripeService {
                 List<OrderItemDO> items = orderItemMapper.findByOrderId(order.getId());
                 for (OrderItemDO item : items) {
                     productMapper.increaseSalesCount(item.getProductId(), item.getQuantity());
+                    if (item.getSkuId() != null && item.getSkuId() > 0) {
+                        skuMapper.increaseSalesCount(item.getSkuId(), item.getQuantity());
+                    }
                 }
             }
         } else {

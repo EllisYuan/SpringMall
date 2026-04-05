@@ -12,16 +12,28 @@ import site.geekie.shop.shoppingmall.converter.ProductConverter;
 import site.geekie.shop.shoppingmall.dto.ProductDTO;
 import site.geekie.shop.shoppingmall.entity.CategoryDO;
 import site.geekie.shop.shoppingmall.entity.ProductDO;
+import site.geekie.shop.shoppingmall.entity.ProductSpecDO;
+import site.geekie.shop.shoppingmall.entity.ProductSpecValueDO;
+import site.geekie.shop.shoppingmall.entity.SkuDO;
+import site.geekie.shop.shoppingmall.vo.ProductSpecVO;
 import site.geekie.shop.shoppingmall.vo.ProductVO;
+import site.geekie.shop.shoppingmall.vo.SkuVO;
+import site.geekie.shop.shoppingmall.vo.SpecValueVO;
 import site.geekie.shop.shoppingmall.exception.BusinessException;
 import site.geekie.shop.shoppingmall.mapper.CategoryMapper;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
+import site.geekie.shop.shoppingmall.mapper.ProductSpecMapper;
+import site.geekie.shop.shoppingmall.mapper.ProductSpecValueMapper;
+import site.geekie.shop.shoppingmall.mapper.SkuMapper;
 import site.geekie.shop.shoppingmall.service.ProductService;
+import site.geekie.shop.shoppingmall.service.SkuService;
 import site.geekie.shop.shoppingmall.util.ProductCacheService;
 import site.geekie.shop.shoppingmall.util.StockRedisService;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 商品服务实现类
@@ -48,6 +60,10 @@ public class ProductServiceImpl implements ProductService {
     private final ProductConverter productConverter;
     private final StockRedisService stockRedisService;
     private final ProductCacheService productCacheService;
+    private final ProductSpecMapper productSpecMapper;
+    private final ProductSpecValueMapper productSpecValueMapper;
+    private final SkuMapper skuMapper;
+    private final SkuService skuService;
 
     @Override
     public PageResult<ProductVO> getAllProducts(int page, int size, String keyword, Long categoryId, Integer status, String sortBy, String sortDir) {
@@ -105,7 +121,61 @@ public class ProductServiceImpl implements ProductService {
             }
         }
 
-        return productConverter.toVOWithCategory(product, categoryMapper);
+        ProductVO vo = productConverter.toVOWithCategory(product, categoryMapper);
+
+        // 如果商品启用了 SKU，加载规格和 SKU 列表
+        if (Integer.valueOf(1).equals(product.getHasSku())) {
+            fillProductSpecAndSku(product.getId(), vo);
+        }
+
+        return vo;
+    }
+
+    /**
+     * 填充商品的规格和SKU信息（在 Service 层手动构建，避免 MapStruct 接口无法注入 Mapper 的限制）
+     */
+    private void fillProductSpecAndSku(Long productId, ProductVO vo) {
+        // 查询规格维度
+        List<ProductSpecDO> specs = productSpecMapper.findByProductId(productId);
+        // 查询所有规格值
+        List<ProductSpecValueDO> allValues = productSpecValueMapper.findByProductId(productId);
+        Map<Long, List<ProductSpecValueDO>> valuesBySpecId = allValues.stream()
+                .collect(Collectors.groupingBy(ProductSpecValueDO::getSpecId));
+
+        // 构建规格 VO 列表
+        List<ProductSpecVO> specVOs = specs.stream().map(spec -> {
+            List<SpecValueVO> valueVOs = valuesBySpecId.getOrDefault(spec.getId(), List.of()).stream()
+                    .map(v -> new SpecValueVO(v.getId(), v.getValue(), v.getSortOrder()))
+                    .collect(Collectors.toList());
+            return new ProductSpecVO(spec.getId(), spec.getName(), spec.getSortOrder(), valueVOs);
+        }).collect(Collectors.toList());
+        vo.setSpecs(specVOs);
+
+        // 查询 SKU 列表
+        List<SkuDO> skuList = skuMapper.findByProductId(productId);
+        List<SkuVO> skuVOs = skuList.stream().map(sku -> {
+            // 将逗号分隔的 specValueIds 字符串转为 List<Long>
+            List<Long> specValueIds = new java.util.ArrayList<>();
+            if (sku.getSpecValueIds() != null && !sku.getSpecValueIds().isEmpty()) {
+                for (String idStr : sku.getSpecValueIds().split(",")) {
+                    try {
+                        specValueIds.add(Long.parseLong(idStr.trim()));
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+            return new SkuVO(sku.getId(), sku.getSkuCode(), specValueIds, sku.getSpecDesc(),
+                    sku.getPrice(), sku.getStock(), sku.getImage(), sku.getStatus(),
+                    Integer.valueOf(1).equals(sku.getIsDefault()));
+        }).collect(Collectors.toList());
+        vo.setSkuList(skuVOs);
+
+        // 设置价格区间
+        if (!skuList.isEmpty()) {
+            BigDecimal minPrice = skuList.stream().map(SkuDO::getPrice).min(BigDecimal::compareTo).orElse(null);
+            BigDecimal maxPrice = skuList.stream().map(SkuDO::getPrice).max(BigDecimal::compareTo).orElse(null);
+            vo.setMinPrice(minPrice);
+            vo.setMaxPrice(maxPrice);
+        }
     }
 
     @Override
@@ -183,7 +253,14 @@ public class ProductServiceImpl implements ProductService {
             throw new BusinessException(ResultCode.PRODUCT_NOT_FOUND);
         }
 
-        // 2. 删除商品
+        // 2. 级联删除 SKU 相关数据（如果有）
+        if (Integer.valueOf(1).equals(product.getHasSku())) {
+            productSpecValueMapper.deleteByProductId(id);
+            productSpecMapper.deleteByProductId(id);
+            skuMapper.deleteByProductId(id);
+        }
+
+        // 3. 删除商品
         productMapper.deleteById(id);
         // 清除 Redis 库存缓存
         try {

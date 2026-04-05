@@ -31,14 +31,24 @@ public interface CartItemMapper {
     List<CartItemDO> findByUserId(@Param("userId") Long userId);
 
     /**
-     * 根据用户ID和商品ID查询购物车项
-     * 用于检查商品是否已在购物车中
+     * 根据用户ID和商品ID查询购物车项（仅适用于无SKU商品，sku_id IS NULL）
+     * 用于检查无SKU商品是否已在购物车中
      *
-     * @param userId 用户ID
+     * @param userId    用户ID
      * @param productId 商品ID
      * @return 购物车项信息，不存在返回null
      */
     CartItemDO findByUserIdAndProductId(@Param("userId") Long userId, @Param("productId") Long productId);
+
+    /**
+     * 根据用户ID、商品ID和SKU ID查询购物车项（适用于有SKU商品）
+     *
+     * @param userId    用户ID
+     * @param productId 商品ID
+     * @param skuId     SKU ID
+     * @return 购物车项信息，不存在返回null
+     */
+    CartItemDO findByUserIdAndProductIdAndSkuId(@Param("userId") Long userId, @Param("productId") Long productId, @Param("skuId") Long skuId);
 
     /**
      * 根据用户ID查询已选中的购物车项

@@ -14,6 +14,9 @@ public class CartItemVO {
     private Long id;
     private Long userId;
     private Long productId;
+    private Long skuId;
+    private String specDesc;
+    private String skuImage;
     private String productName;
     private String productSubtitle;
     private String productImage;

@@ -26,4 +26,9 @@ public class CartItemDTO {
     @NotNull(message = "数量不能为空")
     @Min(value = 1, message = "数量必须大于等于1")
     private Integer quantity;
+
+    /**
+     * SKU ID（可选，有SKU商品必传）
+     */
+    private Long skuId;
 }

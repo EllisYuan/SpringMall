@@ -16,13 +16,14 @@
         <result column="stock" property="stock"/>
         <result column="status" property="status"/>
         <result column="sales_count" property="salesCount"/>
+        <result column="has_sku" property="hasSku"/>
         <result column="created_at" property="createdAt"/>
         <result column="updated_at" property="updatedAt"/>
     </resultMap>
 
     <!-- 基础字段列表 -->
     <sql id="Base_Column_List">
-        id, category_id, name, subtitle, main_image, images, detail, price, stock, status, sales_count, created_at, updated_at
+        id, category_id, name, subtitle, main_image, images, detail, price, stock, status, sales_count, has_sku, created_at, updated_at
     </sql>
 
     <!-- 根据ID查询商品 -->
@@ -42,7 +43,7 @@
     <!-- 带过滤条件查询所有商品 -->
     <select id="findAllWithFilter" resultMap="BaseResultMap">
         SELECT prod.id, prod.category_id, prod.name, prod.subtitle, prod.main_image, prod.images,
-               prod.detail, prod.price, prod.stock, prod.status, prod.sales_count, prod.created_at, prod.updated_at
+               prod.detail, prod.price, prod.stock, prod.status, prod.sales_count, prod.has_sku, prod.created_at, prod.updated_at
         FROM mall_product prod
         <if test="sortColumn != null and sortColumn.startsWith('cat.')">
             LEFT JOIN mall_category cat ON prod.category_id = cat.id
@@ -81,8 +82,8 @@
 
     <!-- 插入商品 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO mall_product (category_id, name, subtitle, main_image, images, detail, price, stock, status)
-        VALUES (#{categoryId}, #{name}, #{subtitle}, #{mainImage}, #{images}, #{detail}, #{price}, #{stock}, #{status})
+        INSERT INTO mall_product (category_id, name, subtitle, main_image, images, detail, price, stock, status, has_sku)
+        VALUES (#{categoryId}, #{name}, #{subtitle}, #{mainImage}, #{images}, #{detail}, #{price}, #{stock}, #{status}, #{hasSku})
     </insert>
 
     <!-- 更新商品 -->
@@ -98,6 +99,7 @@
             <if test="price != null">price = #{price},</if>
             <if test="stock != null">stock = #{stock},</if>
             <if test="status != null">status = #{status},</if>
+            <if test="hasSku != null">has_sku = #{hasSku},</if>
             updated_at = CURRENT_TIMESTAMP
         </set>
         WHERE id = #{id}

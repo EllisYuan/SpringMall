@@ -17,3 +17,11 @@ mybatis:
 springdoc:
   api-docs:
     enabled: true
+
+spring:
+  devtools:
+    restart:
+      enabled: true
+      exclude: static/**,public/**,templates/**,META-INF/maven/**,META-INF/resources/**,resources/**,logs/**
+    livereload:
+      enabled: true

@@ -19,7 +19,9 @@ import site.geekie.shop.shoppingmall.dto.OrderDTO;
 import site.geekie.shop.shoppingmall.vo.OrderVO;
 import site.geekie.shop.shoppingmall.entity.*;
 import site.geekie.shop.shoppingmall.exception.BusinessException;
+import site.geekie.shop.shoppingmall.entity.SkuDO;
 import site.geekie.shop.shoppingmall.mapper.*;
+import site.geekie.shop.shoppingmall.mapper.SkuMapper;
 import site.geekie.shop.shoppingmall.security.SecurityUser;
 import site.geekie.shop.shoppingmall.mq.producer.OrderMessageProducer;
 import site.geekie.shop.shoppingmall.service.OrderService;
@@ -57,6 +59,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemArchiveMapper orderItemArchiveMapper;
     private final CartItemMapper cartItemMapper;
     private final ProductMapper productMapper;
+    private final SkuMapper skuMapper;
     private final AddressMapper addressMapper;
     private final OrderConverter orderConverter;
     private final OrderItemConverter orderItemConverter;
@@ -129,6 +132,8 @@ public class OrderServiceImpl implements OrderService {
 
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<OrderItemDO> orderItems = new ArrayList<>();
+        // 记录有 SKU 的 orderItem 对应的 SkuDO，用于 DB 扣减
+        List<SkuDO> skuItemList = new ArrayList<>();
 
         for (CartItemDO cartItem : checkedItems) {
             ProductDO product = productMap.get(cartItem.getProductId());
@@ -138,73 +143,130 @@ public class OrderServiceImpl implements OrderService {
             if (product.getStatus() != 1) {
                 throw new BusinessException(ResultCode.PRODUCT_UNAVAILABLE);
             }
-            if (product.getStock() < cartItem.getQuantity()) {
-                throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
+
+            BigDecimal unitPrice;
+            String productImage = product.getMainImage();
+            SkuDO sku = null;
+
+            if (cartItem.getSkuId() != null && cartItem.getSkuId() > 0) {
+                // 有 SKU：使用 SKU 价格和库存
+                sku = skuMapper.findById(cartItem.getSkuId());
+                if (sku == null || !sku.getProductId().equals(cartItem.getProductId())) {
+                    throw new BusinessException(ResultCode.SKU_NOT_FOUND);
+                }
+                if (!Integer.valueOf(1).equals(sku.getStatus())) {
+                    throw new BusinessException(ResultCode.PRODUCT_UNAVAILABLE);
+                }
+                if (sku.getStock() < cartItem.getQuantity()) {
+                    throw new BusinessException(ResultCode.SKU_OUT_OF_STOCK);
+                }
+                unitPrice = sku.getPrice();
+                if (sku.getImage() != null) {
+                    productImage = sku.getImage();
+                }
+            } else {
+                // 无 SKU：使用商品价格和库存
+                if (product.getStock() < cartItem.getQuantity()) {
+                    throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
+                }
+                unitPrice = product.getPrice();
             }
 
             // 计算小计
-            BigDecimal itemTotal = product.getPrice().multiply(new BigDecimal(cartItem.getQuantity()));
+            BigDecimal itemTotal = unitPrice.multiply(new BigDecimal(cartItem.getQuantity()));
             totalAmount = totalAmount.add(itemTotal);
 
             // 准备订单明细（稍后插入）
             OrderItemDO orderItem = new OrderItemDO();
             orderItem.setProductId(product.getId());
             orderItem.setProductName(product.getName());
-            orderItem.setProductImage(product.getMainImage());
-            orderItem.setUnitPrice(product.getPrice());
+            orderItem.setProductImage(productImage);
+            orderItem.setUnitPrice(unitPrice);
             orderItem.setQuantity(cartItem.getQuantity());
             orderItem.setTotalPrice(itemTotal);
+            if (sku != null) {
+                orderItem.setSkuId(sku.getId());
+                orderItem.setSpecDesc(sku.getSpecDesc());
+            }
             orderItems.add(orderItem);
+            skuItemList.add(sku); // null 表示无 SKU
         }
 
-        // 4. Redis 批量预扣库存（降级安全：异常时跳过，由 DB 乐观锁兜底）
+        // 4. Redis 批量预扣库存（仅无 SKU 商品走 product 维度；有 SKU 商品降级走 DB）
+        // 为保持 Redis 预扣的原子性，此处仅对无 SKU 的 orderItems 执行 Redis 预扣
+        List<OrderItemDO> noSkuItems = new ArrayList<>();
+        for (int i = 0; i < orderItems.size(); i++) {
+            if (skuItemList.get(i) == null) {
+                noSkuItems.add(orderItems.get(i));
+            }
+        }
+
         boolean redisDeducted = false;
-        try {
-            Long result = stockRedisService.batchDeductStock(orderItems);
-            if (Long.valueOf(-1L).equals(result)) {
-                // 缓存未加载，懒加载后重试一次
-                stockRedisService.loadStocksIfAbsent(orderItems);
-                result = stockRedisService.batchDeductStock(orderItems);
+        if (!noSkuItems.isEmpty()) {
+            try {
+                Long result = stockRedisService.batchDeductStock(noSkuItems);
+                if (Long.valueOf(-1L).equals(result)) {
+                    // 缓存未加载，懒加载后重试一次
+                    stockRedisService.loadStocksIfAbsent(noSkuItems);
+                    result = stockRedisService.batchDeductStock(noSkuItems);
+                }
+                if (Long.valueOf(-2L).equals(result)) {
+                    throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
+                }
+                if (Long.valueOf(1L).equals(result)) {
+                    redisDeducted = true;
+                }
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("Redis 库存预扣异常，降级为纯 DB 模式", e);
             }
-            if (Long.valueOf(-2L).equals(result)) {
-                throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
-            }
-            if (Long.valueOf(1L).equals(result)) {
-                redisDeducted = true;
-            }
-        } catch (BusinessException e) {
-            // 库存不足，直接抛出，不降级
-            throw e;
-        } catch (Exception e) {
-            log.warn("Redis 库存预扣异常，降级为纯 DB 模式", e);
         }
 
         // 5. DB 乐观锁扣减库存（兜底保证）
-        for (OrderItemDO orderItem : orderItems) {
-            int dbResult = productMapper.decreaseStock(orderItem.getProductId(), orderItem.getQuantity());
-            if (dbResult == 0) {
-                // DB 扣减失败（库存不足或商品不存在），立即恢复 Redis 预扣的库存
-                if (redisDeducted) {
-                    try {
-                        stockRedisService.batchRestoreStock(orderItems);
-                    } catch (Exception ex) {
-                        log.error("DB 扣减失败后恢复 Redis 库存异常", ex);
+        for (int i = 0; i < orderItems.size(); i++) {
+            OrderItemDO orderItem = orderItems.get(i);
+            SkuDO sku = skuItemList.get(i);
+
+            if (sku != null) {
+                // 有 SKU：扣减 SKU 库存
+                int dbResult = skuMapper.decreaseStock(sku.getId(), orderItem.getQuantity());
+                if (dbResult == 0) {
+                    if (redisDeducted) {
+                        try {
+                            stockRedisService.batchRestoreStock(noSkuItems);
+                        } catch (Exception ex) {
+                            log.error("DB SKU扣减失败后恢复 Redis 库存异常", ex);
+                        }
                     }
+                    throw new BusinessException(ResultCode.SKU_OUT_OF_STOCK);
                 }
-                throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
+            } else {
+                // 无 SKU：扣减商品库存
+                int dbResult = productMapper.decreaseStock(orderItem.getProductId(), orderItem.getQuantity());
+                if (dbResult == 0) {
+                    if (redisDeducted) {
+                        try {
+                            stockRedisService.batchRestoreStock(noSkuItems);
+                        } catch (Exception ex) {
+                            log.error("DB 扣减失败后恢复 Redis 库存异常", ex);
+                        }
+                    }
+                    throw new BusinessException(ResultCode.INSUFFICIENT_STOCK);
+                }
             }
         }
 
         // 6. 注册事务回滚回调：事务异常回滚时自动恢复 Redis 库存
         if (redisDeducted) {
-            final List<OrderItemDO> finalOrderItems = new ArrayList<>(orderItems);
+            final List<OrderItemDO> finalNoSkuItems = new ArrayList<>(noSkuItems);
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCompletion(int status) {
                     if (status == STATUS_ROLLED_BACK) {
                         try {
-                            stockRedisService.batchRestoreStock(finalOrderItems);
-                            log.info("事务回滚后已恢复 Redis 库存，共 {} 个商品", finalOrderItems.size());
+                            stockRedisService.batchRestoreStock(finalNoSkuItems);
+                            log.info("事务回滚后已恢复 Redis 库存，共 {} 个商品", finalNoSkuItems.size());
                         } catch (Exception e) {
                             log.error("事务回滚后恢复 Redis 库存异常", e);
                         }
@@ -372,19 +434,32 @@ public class OrderServiceImpl implements OrderService {
 
         // 恢复库存
         List<OrderItemDO> items = orderItemMapper.findByOrderId(order.getId());
+        List<OrderItemDO> noSkuItems = new ArrayList<>();
         for (OrderItemDO item : items) {
-            productMapper.increaseStock(item.getProductId(), item.getQuantity());
+            if (item.getSkuId() != null && item.getSkuId() > 0) {
+                // 有 SKU：恢复 SKU 库存
+                skuMapper.increaseStock(item.getSkuId(), item.getQuantity());
+            } else {
+                // 无 SKU：恢复商品库存
+                productMapper.increaseStock(item.getProductId(), item.getQuantity());
+                noSkuItems.add(item);
+            }
         }
-        // 恢复 Redis 库存
-        try {
-            stockRedisService.batchRestoreStock(items);
-        } catch (Exception e) {
-            log.warn("取消订单时恢复 Redis 库存异常 - 订单号: {}", orderNo, e);
+        // 恢复 Redis 库存（仅无 SKU 商品）
+        if (!noSkuItems.isEmpty()) {
+            try {
+                stockRedisService.batchRestoreStock(noSkuItems);
+            } catch (Exception e) {
+                log.warn("取消订单时恢复 Redis 库存异常 - 订单号: {}", orderNo, e);
+            }
         }
 
         // 已付款订单取消时，扣减销量
         if (OrderStatus.PAID.getCode().equals(order.getStatus())) {
             for (OrderItemDO item : items) {
+                if (item.getSkuId() != null && item.getSkuId() > 0) {
+                    skuMapper.decreaseSalesCount(item.getSkuId(), item.getQuantity());
+                }
                 productMapper.decreaseSalesCount(item.getProductId(), item.getQuantity());
             }
         }
@@ -509,19 +584,30 @@ public class OrderServiceImpl implements OrderService {
 
         // 恢复库存
         List<OrderItemDO> items = orderItemMapper.findByOrderId(order.getId());
+        List<OrderItemDO> noSkuItemsAdmin = new ArrayList<>();
         for (OrderItemDO item : items) {
-            productMapper.increaseStock(item.getProductId(), item.getQuantity());
+            if (item.getSkuId() != null && item.getSkuId() > 0) {
+                skuMapper.increaseStock(item.getSkuId(), item.getQuantity());
+            } else {
+                productMapper.increaseStock(item.getProductId(), item.getQuantity());
+                noSkuItemsAdmin.add(item);
+            }
         }
-        // 恢复 Redis 库存
-        try {
-            stockRedisService.batchRestoreStock(items);
-        } catch (Exception e) {
-            log.warn("管理员取消订单时恢复 Redis 库存异常 - 订单号: {}", orderNo, e);
+        // 恢复 Redis 库存（仅无 SKU 商品）
+        if (!noSkuItemsAdmin.isEmpty()) {
+            try {
+                stockRedisService.batchRestoreStock(noSkuItemsAdmin);
+            } catch (Exception e) {
+                log.warn("管理员取消订单时恢复 Redis 库存异常 - 订单号: {}", orderNo, e);
+            }
         }
 
         // 已付款订单取消时，扣减销量
         if (OrderStatus.PAID.getCode().equals(order.getStatus())) {
             for (OrderItemDO item : items) {
+                if (item.getSkuId() != null && item.getSkuId() > 0) {
+                    skuMapper.decreaseSalesCount(item.getSkuId(), item.getQuantity());
+                }
                 productMapper.decreaseSalesCount(item.getProductId(), item.getQuantity());
             }
         }

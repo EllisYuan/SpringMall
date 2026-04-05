@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -23,6 +24,11 @@ public class ProductVO {
     private Integer stock;
     private Integer status;
     private Integer salesCount;
+    private Integer hasSku;
+    private List<ProductSpecVO> specs;
+    private List<SkuVO> skuList;
+    private BigDecimal minPrice;
+    private BigDecimal maxPrice;
     private LocalDateTime createdAt;
 
     public ProductVO(Long id, Long categoryId, String name, String subtitle,

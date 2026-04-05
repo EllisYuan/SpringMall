@@ -12,6 +12,8 @@ import java.math.BigDecimal;
 public class OrderItemVO {
     private Long id;
     private Long productId;
+    private Long skuId;
+    private String specDesc;
     private String productName;
     private String productImage;
     private BigDecimal unitPrice;

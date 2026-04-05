@@ -34,6 +34,7 @@ import site.geekie.shop.shoppingmall.mapper.OrderItemMapper;
 import site.geekie.shop.shoppingmall.mapper.OrderMapper;
 import site.geekie.shop.shoppingmall.mapper.PaymentMapper;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
+import site.geekie.shop.shoppingmall.mapper.SkuMapper;
 import site.geekie.shop.shoppingmall.mq.producer.PaymentMessageProducer;
 import site.geekie.shop.shoppingmall.converter.PaymentConverter;
 import site.geekie.shop.shoppingmall.service.AlipayPaymentService;
@@ -60,6 +61,7 @@ public class AlipayPaymentServiceImpl implements AlipayPaymentService {
     private final OrderItemMapper orderItemMapper;
     private final PaymentMapper paymentMapper;
     private final ProductMapper productMapper;
+    private final SkuMapper skuMapper;
     private final AlipayClient alipayClient;
     private final AlipayConfig alipayConfig;
     private final RedisDistributedLock redisDistributedLock;
@@ -278,6 +280,9 @@ public class AlipayPaymentServiceImpl implements AlipayPaymentService {
                     List<OrderItemDO> items = orderItemMapper.findByOrderId(order.getId());
                     for (OrderItemDO item : items) {
                         productMapper.increaseSalesCount(item.getProductId(), item.getQuantity());
+                        if (item.getSkuId() != null && item.getSkuId() > 0) {
+                            skuMapper.increaseSalesCount(item.getSkuId(), item.getQuantity());
+                        }
                     }
                 }
             } else {

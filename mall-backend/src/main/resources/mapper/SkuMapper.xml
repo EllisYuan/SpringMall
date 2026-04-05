@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="site.geekie.shop.shoppingmall.mapper.SkuMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="site.geekie.shop.shoppingmall.entity.SkuDO">
+        <id column="id" property="id"/>
+        <result column="product_id" property="productId"/>
+        <result column="sku_code" property="skuCode"/>
+        <result column="spec_value_ids" property="specValueIds"/>
+        <result column="spec_desc" property="specDesc"/>
+        <result column="price" property="price"/>
+        <result column="stock" property="stock"/>
+        <result column="image" property="image"/>
+        <result column="status" property="status"/>
+        <result column="is_default" property="isDefault"/>
+        <result column="sales_count" property="salesCount"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <!-- 基础字段列表 -->
+    <sql id="Base_Column_List">
+        id, product_id, sku_code, spec_value_ids, spec_desc, price, stock, image, status, is_default, sales_count, created_at, updated_at
+    </sql>
+
+    <!-- 根据ID查询SKU -->
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_sku
+        WHERE id = #{id}
+    </select>
+
+    <!-- 根据ID列表批量查询SKU -->
+    <select id="findByIds" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_sku
+        WHERE id IN
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- 根据商品ID查询所有SKU -->
+    <select id="findByProductId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_sku
+        WHERE product_id = #{productId}
+        ORDER BY id ASC
+    </select>
+
+    <!-- 根据商品ID查询默认SKU -->
+    <select id="findDefaultByProductId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_sku
+        WHERE product_id = #{productId} AND is_default = 1 AND status = 1
+        LIMIT 1
+    </select>
+
+    <!-- 批量插入SKU -->
+    <insert id="batchInsert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mall_sku (product_id, sku_code, spec_value_ids, spec_desc, price, stock, image, status, is_default)
+        VALUES
+        <foreach collection="skuList" item="sku" separator=",">
+            (#{sku.productId}, #{sku.skuCode}, #{sku.specValueIds}, #{sku.specDesc},
+             #{sku.price}, #{sku.stock}, #{sku.image}, #{sku.status}, #{sku.isDefault})
+        </foreach>
+    </insert>
+
+    <!-- 根据商品ID删除所有SKU -->
+    <delete id="deleteByProductId">
+        DELETE FROM mall_sku WHERE product_id = #{productId}
+    </delete>
+
+    <!-- 扣减SKU库存（乐观锁） -->
+    <update id="decreaseStock">
+        UPDATE mall_sku
+        SET stock = stock - #{quantity},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND stock >= #{quantity}
+    </update>
+
+    <!-- 增加SKU库存 -->
+    <update id="increaseStock">
+        UPDATE mall_sku
+        SET stock = stock + #{quantity},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <!-- 增加SKU销量 -->
+    <update id="increaseSalesCount">
+        UPDATE mall_sku
+        SET sales_count = sales_count + #{quantity}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 扣减SKU销量（最小为0） -->
+    <update id="decreaseSalesCount">
+        UPDATE mall_sku
+        SET sales_count = GREATEST(sales_count - #{quantity}, 0)
+        WHERE id = #{id}
+    </update>
+
+</mapper>

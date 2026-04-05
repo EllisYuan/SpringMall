@@ -8,6 +8,7 @@
         <id column="id" property="id"/>
         <result column="user_id" property="userId"/>
         <result column="product_id" property="productId"/>
+        <result column="sku_id" property="skuId"/>
         <result column="quantity" property="quantity"/>
         <result column="checked" property="checked"/>
         <result column="created_at" property="createdAt"/>
@@ -16,7 +17,7 @@
 
     <!-- 基础字段列表 -->
     <sql id="Base_Column_List">
-        id, user_id, product_id, quantity, checked, created_at, updated_at
+        id, user_id, product_id, sku_id, quantity, checked, created_at, updated_at
     </sql>
 
     <!-- 根据ID查询购物车项 -->
@@ -34,11 +35,18 @@
         ORDER BY created_at DESC
     </select>
 
-    <!-- 根据用户ID和商品ID查询购物车项 -->
+    <!-- 根据用户ID和商品ID查询购物车项（仅无SKU商品，sku_id = 0） -->
     <select id="findByUserIdAndProductId" resultMap="BaseResultMap">
         SELECT <include refid="Base_Column_List"/>
         FROM mall_cart_item
-        WHERE user_id = #{userId} AND product_id = #{productId}
+        WHERE user_id = #{userId} AND product_id = #{productId} AND sku_id = 0
+    </select>
+
+    <!-- 根据用户ID、商品ID和SKU ID查询购物车项（有SKU商品） -->
+    <select id="findByUserIdAndProductIdAndSkuId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_cart_item
+        WHERE user_id = #{userId} AND product_id = #{productId} AND sku_id = #{skuId}
     </select>
 
     <!-- 根据用户ID查询已选中的购物车项 -->
@@ -51,8 +59,8 @@
 
     <!-- 插入购物车项 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO mall_cart_item (user_id, product_id, quantity, checked)
-        VALUES (#{userId}, #{productId}, #{quantity}, #{checked})
+        INSERT INTO mall_cart_item (user_id, product_id, sku_id, quantity, checked)
+        VALUES (#{userId}, #{productId}, #{skuId}, #{quantity}, #{checked})
     </insert>
 
     <!-- 更新数量 -->

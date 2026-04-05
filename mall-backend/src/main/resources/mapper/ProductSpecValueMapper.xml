@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="site.geekie.shop.shoppingmall.mapper.ProductSpecValueMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="site.geekie.shop.shoppingmall.entity.ProductSpecValueDO">
+        <id column="id" property="id"/>
+        <result column="spec_id" property="specId"/>
+        <result column="product_id" property="productId"/>
+        <result column="value" property="value"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <!-- 基础字段列表 -->
+    <sql id="Base_Column_List">
+        id, spec_id, product_id, value, sort_order, created_at
+    </sql>
+
+    <!-- 根据商品ID查询所有规格选项值 -->
+    <select id="findByProductId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_product_spec_value
+        WHERE product_id = #{productId}
+        ORDER BY spec_id ASC, sort_order ASC, id ASC
+    </select>
+
+    <!-- 根据规格维度ID查询所有规格选项值 -->
+    <select id="findBySpecId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_product_spec_value
+        WHERE spec_id = #{specId}
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <!-- 根据ID列表批量查询规格选项值 -->
+    <select id="findByIds" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_product_spec_value
+        WHERE id IN
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- 批量插入规格选项值 -->
+    <insert id="batchInsert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mall_product_spec_value (spec_id, product_id, value, sort_order)
+        VALUES
+        <foreach collection="values" item="v" separator=",">
+            (#{v.specId}, #{v.productId}, #{v.value}, #{v.sortOrder})
+        </foreach>
+    </insert>
+
+    <!-- 根据商品ID删除所有规格选项值 -->
+    <delete id="deleteByProductId">
+        DELETE FROM mall_product_spec_value WHERE product_id = #{productId}
+    </delete>
+
+</mapper>

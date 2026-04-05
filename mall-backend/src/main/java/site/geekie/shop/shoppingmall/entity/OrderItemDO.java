@@ -28,6 +28,11 @@ public class OrderItemDO {
     private Long productId;
 
     /**
+     * SKU ID（无SKU商品为0）
+     */
+    private Long skuId = 0L;
+
+    /**
      * 商品名称（冗余，防止商品信息变更）
      */
     private String productName;
@@ -36,6 +41,11 @@ public class OrderItemDO {
      * 商品图片（冗余）
      */
     private String productImage;
+
+    /**
+     * 规格描述快照（如"红色,XL"），无SKU商品为NULL
+     */
+    private String specDesc;
 
     /**
      * 单价

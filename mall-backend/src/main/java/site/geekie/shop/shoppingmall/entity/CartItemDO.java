@@ -27,6 +27,11 @@ public class CartItemDO {
     private Long productId;
 
     /**
+     * SKU ID（无SKU商品为0）
+     */
+    private Long skuId = 0L;
+
+    /**
      * 数量
      */
     private Integer quantity;

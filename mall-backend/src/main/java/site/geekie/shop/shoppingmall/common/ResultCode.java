@@ -76,6 +76,12 @@ public enum ResultCode {
     //商品已下架
     PRODUCT_UNAVAILABLE(40104, "Product is unavailable"),
 
+    // SKU 相关错误码
+    SKU_NOT_FOUND(40151, "SKU not found"),
+    SKU_OUT_OF_STOCK(40152, "SKU is out of stock"),
+    SKU_REQUIRED(40153, "SKU is required for this product"),
+    SKU_CONFIG_INVALID(40154, "SKU configuration is invalid"),
+
     // ========== 分类相关错误码 (40201-40299) ==========
     //分类不存在
     CATEGORY_NOT_FOUND(40201, "Category not found"),

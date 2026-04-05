@@ -8,11 +8,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import site.geekie.shop.shoppingmall.common.PageResult;
 import site.geekie.shop.shoppingmall.common.Result;
 import site.geekie.shop.shoppingmall.dto.ProductDTO;
+import site.geekie.shop.shoppingmall.dto.ProductSkuConfigDTO;
 import site.geekie.shop.shoppingmall.vo.ProductVO;
 import site.geekie.shop.shoppingmall.service.ProductService;
+import site.geekie.shop.shoppingmall.service.SkuService;
 
 /**
  * 管理员-商品管理控制器
@@ -31,6 +34,7 @@ import site.geekie.shop.shoppingmall.service.ProductService;
 public class AdminProductController {
 
     private final ProductService productService;
+    private final SkuService skuService;
 
     /**
      * 获取所有商品（管理员）
@@ -144,6 +148,53 @@ public class AdminProductController {
             @PathVariable Long id,
             @RequestParam Integer stock) {
         productService.updateProductStock(id, stock);
+        return Result.success();
+    }
+
+    /**
+     * 保存商品SKU配置（全量替换）
+     * PUT /api/v1/admin/products/{id}/sku-config
+     *
+     * @param id     商品ID
+     * @param config SKU配置
+     * @return 操作结果
+     */
+    @Operation(summary = "保存商品SKU配置")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @PutMapping("/{id}/sku-config")
+    public Result<Void> saveSkuConfig(
+            @PathVariable Long id,
+            @Valid @RequestBody ProductSkuConfigDTO config) {
+        skuService.saveProductSkuConfig(id, config);
+        return Result.success();
+    }
+
+    /**
+     * 获取商品SKU配置
+     * GET /api/v1/admin/products/{id}/sku-config
+     *
+     * @param id 商品ID
+     * @return SKU配置
+     */
+    @Operation(summary = "获取商品SKU配置")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @GetMapping("/{id}/sku-config")
+    public Result<ProductSkuConfigDTO> getSkuConfig(@PathVariable Long id) {
+        return Result.success(skuService.getProductSkuConfig(id));
+    }
+
+    /**
+     * 删除商品SKU配置
+     * DELETE /api/v1/admin/products/{id}/sku-config
+     *
+     * @param id 商品ID
+     * @return 操作结果
+     */
+    @Operation(summary = "删除商品SKU配置")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @DeleteMapping("/{id}/sku-config")
+    public Result<Void> deleteSkuConfig(@PathVariable Long id) {
+        skuService.deleteProductSkuConfig(id);
         return Result.success();
     }
 }

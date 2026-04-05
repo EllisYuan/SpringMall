@@ -36,6 +36,7 @@ import site.geekie.shop.shoppingmall.mapper.OrderItemMapper;
 import site.geekie.shop.shoppingmall.mapper.OrderMapper;
 import site.geekie.shop.shoppingmall.mapper.PaymentMapper;
 import site.geekie.shop.shoppingmall.mapper.ProductMapper;
+import site.geekie.shop.shoppingmall.mapper.SkuMapper;
 import site.geekie.shop.shoppingmall.mapper.RefundMapper;
 import site.geekie.shop.shoppingmall.converter.PaymentConverter;
 import site.geekie.shop.shoppingmall.converter.RefundConverter;
@@ -70,6 +71,7 @@ public class WxPayServiceImpl implements WxPayService {
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
     private final ProductMapper productMapper;
+    private final SkuMapper skuMapper;
     private final PaymentConverter paymentConverter;
     private final RefundConverter refundConverter;
 
@@ -228,6 +230,9 @@ public class WxPayServiceImpl implements WxPayService {
                     List<OrderItemDO> items = orderItemMapper.findByOrderId(paidOrder.getId());
                     for (OrderItemDO item : items) {
                         productMapper.increaseSalesCount(item.getProductId(), item.getQuantity());
+                        if (item.getSkuId() != null && item.getSkuId() > 0) {
+                            skuMapper.increaseSalesCount(item.getSkuId(), item.getQuantity());
+                        }
                     }
                 }
             }

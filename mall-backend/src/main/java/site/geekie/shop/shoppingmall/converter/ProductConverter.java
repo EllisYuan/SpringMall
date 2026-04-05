@@ -24,22 +24,28 @@ public interface ProductConverter {
 
     /**
      * 将 ProductDO 转换为 ProductVO（基础映射）
-     * 注意：categoryName 字段将为 null，需要后续填充
+     * 注意：categoryName、specs、skuList、minPrice、maxPrice 字段需后续填充
      *
      * @param product 商品实体
-     * @return 商品VO（categoryName为null）
+     * @return 商品VO（上述字段为null）
      */
     @Mapping(target = "categoryName", ignore = true)
+    @Mapping(target = "specs", ignore = true)
+    @Mapping(target = "skuList", ignore = true)
+    @Mapping(target = "minPrice", ignore = true)
+    @Mapping(target = "maxPrice", ignore = true)
     ProductVO toVO(ProductDO product);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "salesCount", ignore = true)
+    @Mapping(target = "hasSku", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     ProductDO toDO(ProductDTO dto);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "salesCount", ignore = true)
+    @Mapping(target = "hasSku", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     void updateDOFromDTO(ProductDTO dto, @MappingTarget ProductDO product);
