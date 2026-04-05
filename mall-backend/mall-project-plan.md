@@ -1,6 +1,6 @@
 # Spring Mall BACK-END方案
 
-> 最后更新时间：2026-02-17
+> 最后更新时间：2026-04-05
 
 ## 一、项目概述
 
@@ -46,7 +46,8 @@ Mall Backend API - 小型在线商城后端
 │  │  支付模块   │  │  库存管理   │  │  后台管理   │          │
 │  │  - 模拟支付 │  │  - 下单扣减 │  │  - 商品管理 │          │
 │  │  - 支付宝   │  │  - 取消恢复 │  │  - 订单管理 │          │
-│  │  - 微信支付 │  │             │  │  - 用户管理 │          │
+│  │  - 微信支付 │  │  - SKU库存  │  │  - 用户管理 │          │
+│  │  - Stripe   │  │  - Redis预扣│  │  - SKU管理  │          │
 │  └─────────────┘  └─────────────┘  └─────────────┘          │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -131,9 +132,13 @@ Mall Backend API - 小型在线商城后端
 
 ### 3.3 库存策略
 
-- **下单时**：扣减库存
-- **取消时**：恢复库存
-- **库存不足**：拒绝下单
+- **双层库存模型**：
+  - 无 SKU 商品 → `mall_product.stock` 维度
+  - 有 SKU 商品 → `mall_sku.stock` 维度
+- **下单时**：Redis 预扣（仅无 SKU 商品）+ DB 乐观锁扣减库存
+- **取消时**：区分 SKU / Product 维度恢复库存
+- **掉单补偿**：延迟队列超时后，区分 SKU / Product 维度恢复库存
+- **库存不足**：拒绝下单（Redis 快速拒绝 + DB 兜底校验）
 
 ---
 
@@ -172,20 +177,45 @@ Mall Backend API - 小型在线商城后端
 │ district        │       │ detail          │
 │ detail_address  │       │ price           │
 │ is_default      │       │ stock           │
-│ created_at      │       │ status          │
-│ updated_at      │       │ created_at      │
-└─────────────────┘       │ updated_at      │
+│ created_at      │       │ sales_count     │
+│ updated_at      │       │ has_sku         │
+└─────────────────┘       │ status          │
+         │                │ created_at      │
+         │                │ updated_at      │
          │                └────────┬────────┘
          │                         │
-         │                         │ 1:N
-         │                         │
-         │                         ▼
+         │                    1:N  │  1:N
+         │               ┌─────────┴─────────┐
+         │               │                   │
+         │               ▼                   ▼
+         │   ┌──────────────────┐  ┌─────────────────┐
+         │   │mall_product_spec │  │    mall_sku      │
+         │   ├──────────────────┤  ├─────────────────┤
+         │   │ id (PK)          │  │ id (PK)         │
+         │   │ product_id (FK)  │  │ product_id (FK) │
+         │   │ name             │  │ sku_code        │
+         │   │ sort_order       │  │ spec_value_ids  │
+         │   └────────┬─────── ┘  │ spec_desc       │
+         │            │ 1:N       │ price           │
+         │            ▼           │ stock           │
+         │   ┌──────────────────┐ │ image           │
+         │   │mall_product_     │ │ status          │
+         │   │  spec_value      │ │ is_default      │
+         │   ├──────────────────┤ │ sales_count     │
+         │   │ id (PK)          │ └─────────────────┘
+         │   │ spec_id (FK)     │
+         │   │ product_id (FK)  │
+         │   │ value            │
+         │   │ sort_order       │
+         │   └──────────────────┘
+         │
          │                ┌─────────────────┐
          │                │ mall_cart_item  │
          │                ├─────────────────┤
          │                │ id (PK)         │
          │                │ user_id (FK)    │◄────┐
          │                │ product_id (FK) │     │
+         │                │ sku_id (FK)     │     │
          │                │ quantity        │     │
          │                │ checked         │     │
          │                │ created_at      │     │
@@ -224,8 +254,10 @@ Mall Backend API - 小型在线商城后端
 │ id (PK)         │
 │ order_id (FK)   │
 │ product_id (FK) │
+│ sku_id (FK)     │ (无SKU时为0)
 │ product_name    │ (冗余，防止商品变动)
 │ product_image   │
+│ spec_desc       │ (规格描述快照)
 │ unit_price      │
 │ quantity        │
 │ total_price     │
@@ -240,10 +272,15 @@ Mall Backend API - 小型在线商城后端
 | 1 | mall_user | 用户表 |
 | 2 | mall_category | 商品分类表（支持多级） |
 | 3 | mall_product | 商品表 |
-| 4 | mall_cart_item | 购物车表 |
-| 5 | mall_address | 收货地址表 |
-| 6 | mall_order | 订单主表 |
-| 7 | mall_order_item | 订单明细表 |
+| 4 | mall_product_spec | 商品规格维度表（颜色、尺寸等） |
+| 5 | mall_product_spec_value | 商品规格值表（红色、XL 等） |
+| 6 | mall_sku | 商品SKU表（规格组合 → 价格/库存） |
+| 7 | mall_cart_item | 购物车表（新增 sku_id 字段） |
+| 8 | mall_address | 收货地址表 |
+| 9 | mall_order | 订单主表 |
+| 10 | mall_order_item | 订单明细表（新增 sku_id、spec_desc） |
+| 11 | mall_payment | 支付记录表 |
+| 12 | mall_refund | 退款记录表 |
 
 ### 4.3 建表 SQL
 
@@ -495,7 +532,7 @@ INSERT INTO `mall_category` (`name`, `parent_id`, `level`, `sort_order`) VALUES
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|
 | GET | / | 获取购物车列表 | USER |
-| POST | / | 添加商品到购物车 | USER |
+| POST | / | 添加商品到购物车（支持 skuId） | USER |
 | PUT | /{id} | 修改购物车商品数量 | USER |
 | DELETE | /{id} | 删除购物车商品 | USER |
 | DELETE | / | 清空购物车 | USER |
@@ -536,6 +573,11 @@ INSERT INTO `mall_category` (`name`, `parent_id`, `level`, `sort_order`) VALUES
 | POST | /wechat/notify | 微信支付异步通知 | 公开 |
 | POST | /wechat/refund | 微信退款 | USER |
 | POST | /wechat/refund/notify | 微信退款异步通知 | 公开 |
+| POST | /stripe/create | 创建Stripe支付 | USER |
+| GET | /stripe/{paymentNo} | 查询Stripe支付状态 | USER |
+| POST | /stripe/webhook | Stripe支付Webhook | 公开 |
+| POST | /stripe/refund | Stripe退款 | ADMIN |
+| POST | /stripe/refund/webhook | Stripe退款Webhook | 公开 |
 | GET | /{paymentNo} | 查询支付状态 | USER |
 
 #### 5.2.9 后台管理 - 商品 `/api/v1/admin/products`
@@ -549,6 +591,9 @@ INSERT INTO `mall_category` (`name`, `parent_id`, `level`, `sort_order`) VALUES
 | DELETE | /{id} | 删除商品 | ADMIN |
 | PUT | /{id}/status | 上下架商品 | ADMIN |
 | PUT | /{id}/stock | 修改库存 | ADMIN |
+| PUT | /{id}/sku-config | 保存SKU配置（全量替换） | ADMIN |
+| GET | /{id}/sku-config | 获取SKU配置 | ADMIN |
+| DELETE | /{id}/sku-config | 删除SKU配置 | ADMIN |
 
 #### 5.2.10 后台管理 - 分类 `/api/v1/admin/categories`
 
@@ -564,8 +609,10 @@ INSERT INTO `mall_category` (`name`, `parent_id`, `level`, `sort_order`) VALUES
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|
 | GET | / | 所有订单列表 | ADMIN |
+| GET | /status/{status} | 按状态查询订单 | ADMIN |
 | GET | /{orderNo} | 订单详情 | ADMIN |
 | PUT | /{orderNo}/ship | 订单发货 | ADMIN |
+| PUT | /{orderNo}/cancel | 管理员取消订单 | ADMIN |
 
 #### 5.2.12 后台管理 - 用户 `/api/v1/admin/users`
 
@@ -858,6 +905,31 @@ CREATE TABLE `mall_refund` (
 
 ---
 
+#### 7. SKU 多规格支持（2026-04）
+
+- ✅ 商品规格维度表 `mall_product_spec`（颜色、尺寸等）
+- ✅ 商品规格值表 `mall_product_spec_value`（红色、XL 等）
+- ✅ 商品 SKU 表 `mall_sku`（规格组合 → 独立价格/库存/图片）
+- ✅ 商品表新增 `has_sku` 字段区分 SKU/非SKU 商品
+- ✅ 购物车支持 SKU（`mall_cart_item` 新增 `sku_id`，唯一约束更新为 `user+product+sku`）
+- ✅ 订单明细支持 SKU（`mall_order_item` 新增 `sku_id`、`spec_desc`）
+- ✅ 下单流程适配：有 SKU 商品扣减 `mall_sku.stock`，无 SKU 走 `mall_product.stock`
+- ✅ 管理员 SKU 配置接口（全量保存/查询/删除）
+- ✅ 商品详情接口返回规格树 + SKU 列表 + 价格区间
+- ✅ 前端 SKU 配置编辑器组件 `SkuConfigEditor.vue`
+
+**数据库迁移**：`db/V4_sku_support.sql`
+
+#### 8. Bug 修复 — 掉单补偿库存恢复未区分 SKU（2026-04-05）
+
+- ✅ 修复 `PaymentCheckConsumer` 掉单取消订单时不恢复 SKU 库存的 bug
+- **根因**：掉单消费者对所有订单明细统一调用 `productMapper.increaseStock()`，未判断 `skuId`
+- **影响**：有 SKU 的商品在延迟队列超时取消后，SKU 维度库存不恢复（永久扣减）
+- **修复**：区分 `skuId > 0` 走 `skuMapper.increaseStock()`，否则走 `productMapper.increaseStock()`
+- **文件**：`PaymentCheckConsumer.java`
+
+---
+
 ## 八、开发计划
 
 ### 8.1 阶段划分
@@ -870,11 +942,13 @@ CREATE TABLE `mall_refund` (
 | **阶段4** | 分类模块 + 商品模块 | 1天 | ✅ 已完成 |
 | **阶段5** | 购物车模块 | 0.5天 | ✅ 已完成 |
 | **阶段6** | 订单模块 + 库存管理 | 1.5天 | ✅ 已完成 |
-| **阶段7** | 支付模拟 + 支付宝 + 微信支付 | 2天 | ✅ 已完成 |
+| **阶段7** | 支付模拟 + 支付宝 + 微信支付 + Stripe | 2天 | ✅ 已完成 |
 | **阶段8** | 后台管理接口 | 1天 | ✅ 已完成 |
-| **阶段9** | 测试 + 文档完善 | 1天 | 🔄 进行中 |
+| **阶段9** | 测试 + 文档完善 | 1天 | ✅ 已完成 |
+| **阶段10** | 数据库大表优化（索引、归档、缓存） | 1天 | ✅ 已完成 |
+| **阶段11** | SKU 多规格支持（规格/SKU 表、购物车/订单/库存适配） | 2天 | ✅ 已完成 |
 
-**总计：约 9 天**
+**总计：约 12 天**
 
 ### 7.2 阶段1详细任务
 
@@ -945,16 +1019,22 @@ CREATE TABLE `mall_refund` (
 ### 8.3 取消订单流程
 
 ```
-1. 用户请求取消
+1. 用户/管理员/掉单消费者 请求取消
        │
        ▼
-2. 校验订单状态 ──非待支付──► 返回无法取消
+2. 校验订单状态 ──非UNPAID/PAID──► 返回无法取消
        │
-     待支付
+    UNPAID 或 PAID
+       │
+       ├── PAID? ──是──► 调用退款接口
        │
        ▼
-3. 恢复库存（事务）
+3. 遍历订单明细，恢复库存（事务内）
        │
+       ├── skuId > 0 → skuMapper.increaseStock(skuId)
+       │
+       └── skuId = 0 → productMapper.increaseStock(productId)
+       │                + Redis 库存恢复
        ▼
 4. 更新订单状态为 CANCELLED
        │

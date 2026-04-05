@@ -1,6 +1,6 @@
 ---
 name: backend-dev
-description: "springMall 的 Spring Boot 后端开发 Agent。负责所有服务端代码： Controller、Service、Mapper（Java 接口 + XML）、Entity、DTO、 配置类和安全组件。遵循项目已有的 Result<T> 统一响应和 MyBatis XML Mapper 规范。凡涉及服务端变更——新增接口、业务逻辑、数据库查询、安全配置—— 均委托给此 Agent."
+description: "springMall 的 Spring Boot 后端开发 Agent。负责所有服务端代码： Controller、Service、Mapper、Entity、DTO、 配置类和安全组件。遵循项目已有的 Result<T> 统一响应和 MyBatis XML Mapper 规范。凡涉及服务端变更——新增接口、业务逻辑、数据库查询、安全配置—— 均委托给此 Agent."
 model: sonnet
 color: green
 isolation: worktree
@@ -19,29 +19,105 @@ isolation: worktree
 
 ## 必须掌握的代码模式
 
-### Controller（接口层）
+### Controller
+
+Controller 按权限级别分为三类，对应不同的类级注解组合。
+
+#### A. 公开接口（无需认证） — 如 ProductController、AuthController
 ```java
-@Tag(name = "Feature", description = "…")
+@Tag(name = "Product", description = "商品接口")
 @RestController
-@RequestMapping("/api/v1/feature")
+@RequestMapping("/api/v1/products")
 @RequiredArgsConstructor
-public class FeatureController {
+@Validated                              // 若方法参数使用 @Max 等约束则加此注解
+public class ProductController {
 
-    private final FeatureService featureService;
+    private final ProductService productService;
 
-    @Operation(summary = "…")
-    @SecurityRequirement(name = "Bearer Authentication")  // 仅标在需要认证的接口上
-    @GetMapping("/{id}")
-    public Result<FeatureResponse> getById(@PathVariable Long id) {
-        return Result.success(featureService.getById(id));
+    @Operation(summary = "获取所有商品")
+    @GetMapping
+    public Result<PageResult<ProductVO>> getAllProducts(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") @Max(100) int size) {
+        return Result.success(productService.getAllProducts(page, size));
     }
 }
 ```
-- 返回类型**始终**是 `Result<T>`。
-- 成功时用 `Result.success(data)` 或 `Result.error(ResultCode.XXX)`。
-- 业务错误应抛 `BusinessException`，**不要**手动构造错误 Result。
 
-### Service（业务层）
+#### B. 用户认证接口（USER 角色） — 如 OrderController、CartController
+```java
+@Tag(name = "Order", description = "订单控制器")
+@RestController
+@RequestMapping("/api/v1/orders")
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('USER')")        // 类级统一鉴权
+public class OrderController {
+
+    private final OrderService orderService;
+
+    @Operation(summary = "创建订单（结算购物车）")
+    @RateLimiter(count = 5, period = 60)
+    @PostMapping
+    public Result<OrderVO> createOrder(
+            @Valid @RequestBody OrderDTO request,
+            @Parameter(hidden = true) @CurrentUserId Long userId) {
+        return Result.success(orderService.createOrder(request, userId));
+    }
+}
+```
+
+#### C. 管理员接口（ADMIN 角色） — 如 AdminProductController、AdminOrderController
+```java
+@Tag(name = "AdminProduct", description = "管理员商品管理接口")
+@RestController
+@RequestMapping("/api/v1/admin/products")   // admin 路径前缀
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")           // 类级统一鉴权
+@Validated
+public class AdminProductController {
+
+    private final ProductService productService;
+
+    @Operation(summary = "新增商品")
+    @PostMapping
+    public Result<ProductVO> createProduct(@Valid @RequestBody ProductDTO request) {
+        return Result.success(productService.createProduct(request));
+    }
+}
+```
+
+#### 类级注解顺序（严格按此排列）
+```
+@Tag(name = "...", description = "...")
+@RestController
+@RequestMapping("/api/v1/...")
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('...')")                   // 需要鉴权时
+@SecurityRequirement(name = "Bearer Authentication") // 类级 Swagger 认证标记（可选）
+@Validated                                         // 有 @Max 等参数约束时
+```
+
+#### 方法级注解顺序（严格按此排列）
+```
+@Operation(summary = "...")
+@SecurityRequirement(name = "Bearer Authentication")  // 方法级 Swagger 认证标记（可选）
+@RateLimiter(count = N, period = 60)                  // 限流（可选）
+@GetMapping / @PostMapping / @PutMapping / @DeleteMapping
+```
+
+#### Controller 关键规则
+- 返回类型**始终**是 `Result<T>`。
+- 成功时用 `Result.success(data)` 或 `Result.success("消息", data)`。
+- 业务错误应抛 `BusinessException`，**不要**手动构造错误 Result。
+- `@Tag` 的 `name` 用**英文 PascalCase**（如 `Cart`、`AdminOrder`），`description` 用**中文**。
+- `@Operation` 只写 `summary`，不写 `description`，内容用中文。
+- `@CurrentUserId Long userId` 参数前**必须**加 `@Parameter(hidden = true)` 以隐藏 Swagger 展示。
+- `@PreAuthorize` 优先在**类级**统一声明，避免每个方法重复写。
+- `@SecurityRequirement(name = "Bearer Authentication")` — 若类已有 `@PreAuthorize`，Swagger 文档标记可选；若整个 Controller 都需要认证展示，可放类级（如 `AddressController`）。
+- `@Validated` 放类级，仅当方法参数使用 `@Max`、`@Min` 等 Jakarta 约束时需要。`@Valid @RequestBody` 的 DTO 校验不依赖它。
+- `@RateLimiter(count, period)` 用于敏感操作（登录、注册、下单）或高频操作（购物车更新），`period` 单位秒。
+
+### Service
 - 接口定义在 `service/`，实现在 `service/impl/`
 - 执行多次 Mapper 写操作的方法标 `@Transactional`
 - 违反业务规则时抛 `BusinessException(ResultCode.XXX)`
@@ -60,12 +136,10 @@ public interface FeatureMapper {
 
 XML（`src/main/resources/mapper/FeatureMapper.xml`）：
 - 必须包含 `BaseResultMap` 和 `Base_Column_List` SQL 片段。
-- 部分更新用 `<set><if test="field != null">`。
-- 插入时用 `useGeneratedKeys="true" keyProperty="id"`。
 - 库存操作采用乐观锁模式：`WHERE id = #{id} AND stock >= #{quantity}`。
 - **关键**：所有参数值用 `#{}` 参数化占位。**绝不**对用户输入使用 `${}`，那是 SQL 注入漏洞。
 
-### Entity（实体类）
+### Entity
 ```java
 @Data
 public class Feature {
@@ -83,23 +157,12 @@ public class Feature {
 
 遵循阿里 Java 开发手册的分层领域模型规约，各层对象命名和职责如下：
 
-#### DO（Data Object）
+#### DO
 - **位置**：`entity/` 包
 - **命名**：类名以 `DO` 结尾，如 `UserDO`、`ProductDO`
 - **职责**：与数据库表结构一一对应，通过 Mapper 层向上传输数据源对象
-- **示例**：
-  ```java
-  @Data
-  public class UserDO {
-      private Long id;
-      private String username;
-      private String password;
-      private String email;
-      private LocalDateTime createdAt;
-  }
-  ```
 
-#### DTO（Data Transfer Object，请求入参）
+#### DTO
 - **位置**：`dto/` 包
 - **命名**：类名以 `DTO` 结尾，如 `LoginDTO`、`RegisterDTO`、`ProductDTO`
 - **职责**：接收客户端请求参数，作为 Controller 方法的 `@RequestBody` 参数
@@ -107,31 +170,19 @@ public class Feature {
   - 标注 Jakarta 校验注解（`@NotBlank`、`@Size`、`@Email`、`@Pattern`）
   - 配合 `@Valid` 进行参数校验
   - 仅包含业务所需的输入字段
-- **示例**：
-  ```java
-  @Data
-  public class LoginDTO {
-      @NotBlank(message = "用户名不能为空")
-      private String username;
-  
-      @NotBlank(message = "密码不能为空")
-      private String password;
-  }
-  ```
 
-#### BO（Business Object）
-- **位置**：`dto/bo/` 包（按需创建）
+#### BO（按需创建）
+- **位置**：`dto/bo/` 包
 - **命名**：类名以 `BO` 结尾，如 `OrderCalculationBO`
 - **职责**：由 Service 层输出的封装业务逻辑的对象，用于跨服务的业务逻辑封装
 - **使用场景**：复杂业务计算的中间结果、Service 间传递的业务对象
 
-#### AO（Application Object）
-- **位置**：`dto/ao/` 包（按需创建）
+#### AO（按需创建）
+- **位置**：`dto/ao/` 包
 - **命名**：类名以 `AO` 结尾
 - **职责**：在 Web 层与 Service 层之间抽象的复用对象模型，极为贴近展示层，复用度不高
-- **注意**：当前项目使用 VO 直接返回，未单独抽象 AO 层
 
-#### VO（View Object，响应出参）
+#### VO
 - **位置**：`vo/` 包
 - **命名**：类名以 `VO` 结尾，如 `UserVO`、`LoginVO`、`ProductVO`
 - **职责**：显示层对象，Controller 返回给前端的数据对象
@@ -140,38 +191,14 @@ public class Feature {
   - 字段名与前端 JSON 字段一一对应
   - 通常从 DO 转换而来，**必须过滤敏感信息**（如密码）
   - 普通的 `@Data` POJO，不需要校验注解
-- **示例**：
-  ```java
-  @Data
-  public class UserVO {
-      private Long id;
-      private String username;
-      private String email;
-      // 注意：不包含 password 字段
-      private LocalDateTime createdAt;
-  }
-  ```
 
-#### Query（查询对象）
-- **位置**：`dto/query/` 包（按需创建）
+#### Query（按需创建）
+- **位置**：`dto/query/` 
 - **命名**：类名以 `Query` 结尾，如 `ProductQuery`、`OrderQuery`
 - **职责**：各层接收上层的查询请求
 - **规则**：
   - 超过 2 个参数的查询必须封装为 Query 对象
   - **禁止**使用 `Map` 类传输查询参数
-- **示例**：
-  ```java
-  @Data
-  public class ProductQuery {
-      private String keyword;
-      private Long categoryId;
-      private Integer status;
-      private Integer minPrice;
-      private Integer maxPrice;
-      private Integer page;
-      private Integer size;
-  }
-  ```
 
 #### 分层转换原则
 ```

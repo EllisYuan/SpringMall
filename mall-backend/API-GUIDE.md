@@ -1,6 +1,6 @@
 # Spring Mall API 接口文档
 
-> 最后更新时间：2026-03-24
+> 最后更新时间：2026-04-05
 
 ## 项目概述
 
@@ -238,6 +238,62 @@ GET /api/v1/products?page=1&size=10&sortBy=sales&sortDir=desc
 GET /api/v1/products/{id}
 ```
 
+**响应**（启用 SKU 的商品）:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 107,
+    "categoryId": 1,
+    "name": "测试多规格商品",
+    "price": 299.00,
+    "stock": 100,
+    "status": 1,
+    "salesCount": 10,
+    "hasSku": 1,
+    "minPrice": 199.00,
+    "maxPrice": 399.00,
+    "specs": [
+      {
+        "id": 1,
+        "name": "颜色",
+        "values": [
+          { "id": 55, "value": "红色" },
+          { "id": 56, "value": "蓝色" }
+        ]
+      },
+      {
+        "id": 2,
+        "name": "尺寸",
+        "values": [
+          { "id": 60, "value": "M" },
+          { "id": 61, "value": "L" }
+        ]
+      }
+    ],
+    "skuList": [
+      {
+        "id": 1,
+        "skuCode": "SKU-001",
+        "specValueIds": [55, 60],
+        "specDesc": "红色,M",
+        "price": 199.00,
+        "stock": 10,
+        "image": null,
+        "status": 1,
+        "isDefault": true
+      }
+    ]
+  }
+}
+```
+
+**说明**:
+- `hasSku=1` 时，前端应使用 `specs` + `skuList` 渲染规格选择器，价格和库存取 SKU 维度
+- `hasSku=0` 时，不返回 `specs`/`skuList`，价格和库存取商品维度
+- `minPrice`/`maxPrice` 为所有启用 SKU 的价格区间
+
 #### 3.3 搜索商品
 ```http
 GET /api/v1/products/search?keyword=iPhone&page=1&size=10
@@ -332,15 +388,34 @@ Authorization: Bearer <token>
       "productId": 1,
       "productName": "iPhone 15 Pro",
       "productImage": "/images/iphone15pro.jpg",
-      "price": 7999.00,
+      "productPrice": 7999.00,
+      "productStock": 100,
       "quantity": 2,
-      "totalPrice": 15998.00,
-      "checked": true,
-      "stock": 100
+      "subtotal": 15998.00,
+      "checked": 1,
+      "skuId": 0,
+      "specDesc": null,
+      "skuImage": null
+    },
+    {
+      "id": 2,
+      "productId": 107,
+      "productName": "测试多规格商品",
+      "productImage": "/images/test.jpg",
+      "productPrice": 199.00,
+      "productStock": 10,
+      "quantity": 1,
+      "subtotal": 199.00,
+      "checked": 1,
+      "skuId": 1,
+      "specDesc": "红色,M",
+      "skuImage": null
     }
   ]
 }
 ```
+
+**说明**: 有 SKU 的购物车项，`productPrice`/`productStock` 取 SKU 维度数据，`specDesc` 显示规格描述
 
 #### 5.2 添加商品
 ```http
@@ -348,13 +423,24 @@ POST /api/v1/cart
 Authorization: Bearer <token>
 ```
 
-**请求体**:
+**请求体**（无 SKU 商品）:
 ```json
 {
   "productId": 1,
   "quantity": 2
 }
 ```
+
+**请求体**（有 SKU 商品）:
+```json
+{
+  "productId": 107,
+  "quantity": 1,
+  "skuId": 1
+}
+```
+
+**说明**: 有 SKU 的商品（`hasSku=1`）必须传 `skuId`，否则返回 `40153 SKU_REQUIRED`
 
 #### 5.3 修改数量
 ```http
@@ -480,6 +566,8 @@ Authorization: Bearer <token>
     "items": [
       {
         "productId": 1,
+        "skuId": 0,
+        "specDesc": null,
         "productName": "iPhone 15 Pro",
         "quantity": 2,
         "unitPrice": 7999.00,
@@ -489,6 +577,8 @@ Authorization: Bearer <token>
   }
 }
 ```
+
+**说明**: 订单明细中 `skuId > 0` 表示该商品为 SKU 商品，`specDesc` 显示规格描述（如"红色,M"）
 
 #### 7.2 订单列表
 ```http
@@ -518,6 +608,8 @@ Authorization: Bearer <token>
         "items": [
           {
             "productId": 1,
+            "skuId": 0,
+            "specDesc": null,
             "productName": "iPhone 15 Pro",
             "quantity": 2,
             "unitPrice": 7999.00,
@@ -1218,6 +1310,92 @@ PUT /api/v1/admin/products/{id}/stock?stock=200
 Authorization: Bearer <admin-token>
 ```
 
+#### 9.8 保存商品 SKU 配置（全量替换）
+```http
+PUT /api/v1/admin/products/{id}/sku-config
+Authorization: Bearer <admin-token>
+```
+
+**请求体**:
+```json
+{
+  "specs": [
+    {
+      "name": "颜色",
+      "values": ["红色", "蓝色"]
+    },
+    {
+      "name": "尺寸",
+      "values": ["M", "L"]
+    }
+  ],
+  "skuList": [
+    {
+      "specValueIds": [55, 60],
+      "price": 199.00,
+      "stock": 10,
+      "skuCode": "SKU-001",
+      "image": null,
+      "isDefault": true
+    },
+    {
+      "specValueIds": [55, 61],
+      "price": 219.00,
+      "stock": 5,
+      "skuCode": "SKU-002",
+      "image": null,
+      "isDefault": false
+    }
+  ]
+}
+```
+
+**说明**:
+- 全量替换：每次保存会删除旧的规格/SKU 数据，重新写入
+- 保存成功后，商品 `has_sku` 自动设为 1
+- `specValueIds` 中的 ID 为规格值 ID（对应 `mall_product_spec_value.id`）
+- 首次保存时前端不知道 specValueId，应由后端根据规格名+值自动匹配或创建
+
+#### 9.9 获取商品 SKU 配置
+```http
+GET /api/v1/admin/products/{id}/sku-config
+Authorization: Bearer <admin-token>
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "specs": [
+      {
+        "name": "颜色",
+        "values": ["红色", "蓝色"]
+      }
+    ],
+    "skuList": [
+      {
+        "specValueIds": [55, 60],
+        "price": 199.00,
+        "stock": 10,
+        "skuCode": "SKU-001",
+        "image": null,
+        "isDefault": true
+      }
+    ]
+  }
+}
+```
+
+#### 9.10 删除商品 SKU 配置
+```http
+DELETE /api/v1/admin/products/{id}/sku-config
+Authorization: Bearer <admin-token>
+```
+
+**说明**: 删除后商品 `has_sku` 自动设为 0，商品恢复为无规格模式
+
 ---
 
 ### 10. 后台管理 - 分类 `/api/v1/admin/categories` 🔒 ADMIN
@@ -1423,6 +1601,15 @@ Authorization: Bearer <admin-token>
 | 40103 | 库存不足 |
 | 40104 | 商品已下架 |
 
+### SKU 相关错误码
+
+| 错误码 | 说明 |
+|--------|------|
+| 40151 | SKU不存在 |
+| 40152 | SKU库存不足 |
+| 40153 | 该商品需要选择SKU |
+| 40154 | SKU配置无效 |
+
 ### 分类相关错误码
 
 | 错误码 | 说明 |
@@ -1565,9 +1752,11 @@ Authorization: Bearer xxx...
 - 管理员可以查看和管理所有数据
 
 ### 4. 库存与销量管理
-- 下单时扣减库存
-- 支付成功时增加商品累计销量（salesCount）
-- 取消订单时恢复库存，已付款订单同时扣减销量
+- **双层库存**：有 SKU 的商品库存在 `mall_sku` 表维护，无 SKU 的商品库存在 `mall_product` 表维护
+- **下单扣减**：无 SKU 商品走 Redis 预扣 + DB 乐观锁；有 SKU 商品直接走 DB 乐观锁扣减 SKU 库存
+- **支付成功**：增加商品累计销量（salesCount），有 SKU 时同时增加 SKU 销量
+- **取消订单**：恢复对应维度库存（SKU 或 Product），已付款订单同时扣减销量
+- **掉单补偿**：延迟队列超时取消时，同样区分 SKU/Product 维度恢复库存
 - 使用乐观锁防止超卖和并发重复更新销量
 
 ### 5. 订单状态流转

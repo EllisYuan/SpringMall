@@ -141,10 +141,10 @@ Lead Session 将结果汇报给用户
 |---|---|---|---|
 | `backend-dev` | sonnet | Controller、Service、Mapper、Entity、DTO、Config、Security | 任何服务端变更：新接口、业务逻辑、数据库查询、安全配置 |
 | `frontend-dev` | sonnet | Vue 页面、组件、Pinia Store、Router、API 层、SCSS | 任何 UI 变更：新页面、组件、Store Action、API 对接 |
-| `code-reviewer` | sonnet | 安全审查、OWASP 检查、代码规范一致性 | backend-dev 或 frontend-dev 完成变更之后。合并前必经环节。仅读不写。 |
+| `code-reviewer` | opus | 安全审查、OWASP 检查、代码规范一致性 | backend-dev 或 frontend-dev 完成变更之后。合并前必经环节。仅读不写。 |
 | `test-validator` | haiku | 执行 `mvnw test` 和 `pnpm run build`，报告通过/失败 | code-reviewer 审批通过后。确认无回归。 |
-| `devops-deploy` | sonnet | Dockerfile、docker-compose、nginx.conf、.env 管理 | 任何基础设施或部署相关变更。也在 test-validator 通过且涉及部署文件时启动。 |
-| `doc-writer` | sonnet | `mall-backend/DevDoc/` 下所有开发文档 | backend-dev 完成变更后。生成阶段交付文档或规划/设计文档，也负责更新已有文档。 |
+| `devops-deploy` | haiku  | Dockerfile、docker-compose、nginx.conf、.env 管理 | 任何基础设施或部署相关变更。也在 test-validator 通过且涉及部署文件时启动。 |
+| `doc-writer` | haiku | `mall-backend/DevDoc/` 下所有开发文档 | backend-dev 完成变更后。生成阶段交付文档或规划/设计文档，也负责更新已有文档。 |
 
 ### 委托决策树
 1. 纯基础设施 / Docker / 部署 → **devops-deploy**
