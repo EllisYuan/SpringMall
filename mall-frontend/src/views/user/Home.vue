@@ -183,7 +183,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: $spacing-xxl $spacing-xl $spacing-xxl $spacing-xxl;
+  padding: $spacing-xxl $spacing-xl $spacing-xxl max($spacing-xxl, calc((100vw - 1280px) / 2 + $spacing-xl + 8px));
   background: $bg-color;
 
   @include tablet {

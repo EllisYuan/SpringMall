@@ -60,6 +60,7 @@
               <img :src="item.productImage || '/placeholder.png'" :alt="item.productName" />
               <div class="product-info">
                 <h4>{{ item.productName }}</h4>
+                <p v-if="item.specDesc" class="spec-desc">{{ item.specDesc }}</p>
                 <p>¥{{ formatPrice(item.unitPrice) }} × {{ item.quantity }}</p>
               </div>
               <span class="product-total">¥{{ formatPrice(item.totalPrice) }}</span>
@@ -321,6 +322,12 @@ onMounted(() => {
             font-size: 16px;
             color: $text-primary;
             margin: 0 0 $spacing-sm 0;
+          }
+
+          .spec-desc {
+            font-size: 13px;
+            color: $text-placeholder;
+            margin: 0 0 4px 0;
           }
 
           p {

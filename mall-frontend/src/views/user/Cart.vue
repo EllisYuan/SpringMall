@@ -40,11 +40,12 @@
 
             <div class="col-product item-info" @click="goToDetail(item.productId)">
               <div class="item-image">
-                <img :src="item.productImage || '/placeholder.png'" :alt="item.productName" />
+                <img :src="item.skuImage || item.productImage || '/placeholder.png'" :alt="item.productName" />
               </div>
               <div class="item-meta">
                 <h4 class="item-name">{{ item.productName }}</h4>
-                <p v-if="item.productSubtitle" class="item-sub">{{ item.productSubtitle }}</p>
+                <p v-if="item.specDesc" class="item-sub item-spec">{{ item.specDesc }}</p>
+                <p v-else-if="item.productSubtitle" class="item-sub">{{ item.productSubtitle }}</p>
               </div>
             </div>
 
@@ -327,6 +328,11 @@ onMounted(fetchCart)
   font-size: $font-size-xs;
   color: $text-secondary;
   @include text-ellipsis;
+}
+
+.item-spec {
+  color: $text-placeholder;
+  font-size: $font-size-xs;
 }
 
 // Quantity control

@@ -102,11 +102,14 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" align="center" fixed="right">
+        <el-table-column label="操作" width="200" align="center" fixed="right">
           <template #default="{ row }">
             <div style="display: flex; justify-content: center; gap: 4px;">
               <el-button text type="primary" @click="handleEdit(row)">
                 编辑
+              </el-button>
+              <el-button text type="success" @click="handleSku(row)">
+                规格
               </el-button>
               <el-button text type="danger" @click="handleDelete(row.id)">
                 删除
@@ -204,6 +207,20 @@
       </template>
     </el-dialog>
 
+    <!-- SKU 规格配置对话框 -->
+    <el-dialog
+      v-model="skuDialogVisible"
+      :title="`规格配置 — ${skuProduct?.name || ''}`"
+      width="780px"
+      destroy-on-close
+    >
+      <SkuConfigEditor
+        v-if="skuProduct"
+        :product-id="skuProduct.id"
+        @saved="handleSkuSaved"
+      />
+    </el-dialog>
+
     <!-- 修改库存对话框 -->
     <el-dialog v-model="stockDialogVisible" title="修改库存" width="400px">
       <el-form label-width="80px">
@@ -248,6 +265,7 @@ import { getAllCategories } from '@/api/category'
 import { formatPrice } from '@/utils/format'
 import { debounce } from '@/utils/helpers'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import SkuConfigEditor from '@/components/admin/SkuConfigEditor.vue'
 
 const loading = ref(false)
 const products = ref([])
@@ -270,6 +288,9 @@ const total = ref(0)
 
 const currentProduct = ref(null)
 const newStock = ref(0)
+
+const skuDialogVisible = ref(false)
+const skuProduct = ref(null)
 
 // 商品表单
 const productForm = ref({
@@ -388,6 +409,23 @@ const handleStatusChange = async (product) => {
     fetchProducts()
   } catch (error) {
     console.error('修改状态失败:', error)
+  }
+}
+
+// 打开 SKU 规格配置
+const handleSku = (product) => {
+  skuProduct.value = product
+  skuDialogVisible.value = true
+}
+
+// SKU 保存成功回调
+const handleSkuSaved = (result) => {
+  // 刷新商品列表以更新 hasSku 等字段
+  fetchProducts()
+
+  if (result?.action === 'save') {
+    skuDialogVisible.value = false
+    skuProduct.value = null
   }
 }
 

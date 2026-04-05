@@ -84,6 +84,28 @@
   box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
 }
 
+.el-select-dropdown {
+  border-radius: 0 !important;
+  border: 1px solid $border-light;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+
+  .el-select-dropdown__item {
+    color: $text-primary !important;
+
+    &:hover,
+    &.hover,
+    &.selected:hover {
+      background-color: $primary-color !important;
+      color: $text-inverse !important;
+    }
+
+    &.selected {
+      color: $primary-color !important;
+      font-weight: $font-weight-medium;
+    }
+  }
+}
+
 // Badge — minimal
 .el-badge__content {
   background-color: $primary-color;

@@ -44,6 +44,7 @@
               </div>
               <div class="item-details">
                 <h4 class="item-name">{{ item.productName }}</h4>
+                <p v-if="item.specDesc" class="item-spec-desc">{{ item.specDesc }}</p>
                 <p class="item-price">¥{{ formatPrice(item.unitPrice) }} × {{ item.quantity }}</p>
               </div>
             </div>
@@ -377,6 +378,12 @@ onMounted(fetchOrders)
   font-weight: $font-weight-medium;
   color: $text-primary;
   margin: 0 0 4px;
+}
+
+.item-spec-desc {
+  font-size: $font-size-xs;
+  color: $text-placeholder;
+  margin: 0 0 2px;
 }
 
 .item-price {

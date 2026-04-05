@@ -81,10 +81,13 @@ export const useCartStore = defineStore('cart', {
      * 添加商品到购物车
      * @param {number} productId - 商品 ID
      * @param {number} quantity - 数量
+     * @param {number|undefined} skuId - SKU ID（有 SKU 商品必传）
      */
-    async addItem(productId, quantity = 1) {
+    async addItem(productId, quantity = 1, skuId = undefined) {
       try {
-        await addToCartApi({ productId, quantity })
+        const payload = { productId, quantity }
+        if (skuId !== undefined) payload.skuId = skuId
+        await addToCartApi(payload)
         // 重新获取购物车数据
         await this.fetchCart()
         ElMessage.success('已加入购物车')
