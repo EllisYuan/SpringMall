@@ -50,9 +50,11 @@ spring.log
 *.temp
 nul
 tmpclaude-*
+**/rebel.xml
 
 ### OS Files ###
 .DS_Store
 Thumbs.db
 
+### claude ###
 .claude/worktree

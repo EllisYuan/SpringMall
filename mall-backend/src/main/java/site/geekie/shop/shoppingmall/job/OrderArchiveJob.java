@@ -1,8 +1,9 @@
-package site.geekie.shop.shoppingmall.util;
+package site.geekie.shop.shoppingmall.job;
 
+import com.xxl.job.core.context.XxlJobHelper;
+import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import site.geekie.shop.shoppingmall.entity.OrderDO;
@@ -23,7 +24,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class OrderArchiveTask {
+public class OrderArchiveJob {
 
     private static final int BATCH_SIZE = 500;
 
@@ -33,29 +34,31 @@ public class OrderArchiveTask {
     private final OrderItemArchiveMapper orderItemArchiveMapper;
 
     /**
-     * 每天凌晨2点执行归档
+     * 每天凌晨2点执行归档（由 XXL-JOB 调度，Handler: orderArchiveJobHandler）
      * 分批处理，每批500条，避免长事务和锁表
      */
-    @Scheduled(cron = "0 0 2 * * ?")
+    @XxlJob("orderArchiveJobHandler")
     public void archiveOldOrders() {
         LocalDateTime threshold = LocalDateTime.now().minusMonths(3);
         int totalArchived = 0;
 
+        XxlJobHelper.log("开始归档订单，阈值时间: {}", threshold);
         log.info("开始归档订单，阈值时间: {}", threshold);
 
         while (true) {
             try {
                 int archived = archiveBatch(threshold);
-                if (archived == 0) {
-                    break;
-                }
+                if (archived == 0) break;
                 totalArchived += archived;
+                XxlJobHelper.log("累计已归档 {} 条", totalArchived);
             } catch (Exception e) {
-                log.error("归档批次执行失败，已归档 {} 条，停止本次归档", totalArchived, e);
-                break;
+                log.error("归档批次执行失败，已归档 {} 条", totalArchived, e);
+                XxlJobHelper.handleFail("归档中断，已归档 " + totalArchived + " 条: " + e.getMessage());
+                return;
             }
         }
 
+        XxlJobHelper.log("归档完成，共归档 {} 条订单", totalArchived);
         log.info("归档完成，共归档 {} 条订单", totalArchived);
     }
 
