@@ -193,8 +193,8 @@
         </el-form-item>
         <el-form-item label="商品状态" prop="status">
           <el-radio-group v-model="productForm.status">
-            <el-radio value="ON_SALE">在售</el-radio>
-            <el-radio value="OFF_SALE">下架</el-radio>
+            <el-radio :value="1">在售</el-radio>
+            <el-radio :value="0">下架</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>

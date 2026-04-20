@@ -189,6 +189,7 @@ public class ProductServiceImpl implements ProductService {
 
         // 2. 创建商品
         ProductDO product = productConverter.toDO(request);
+        product.setHasSku(0);
 
         productMapper.insert(product);
         // 同步 Redis 库存
