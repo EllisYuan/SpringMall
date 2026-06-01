@@ -26,18 +26,19 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     private final UserMapper userMapper;
 
     /**
-     * 根据用户名加载用户详情
+     * 根据账号（用户名或邮箱）加载用户详情
      * Spring Security在认证过程中调用此方法获取用户信息
+     * 包含 '@' 时按邮箱匹配，否则按用户名匹配
      *
-     * @param username 用户名
+     * @param account 用户名或邮箱地址
      * @return UserDetails 用户详情对象，包含认证所需的用户信息
      * @throws UsernameNotFoundException 当用户不存在时抛出此异常
      */
     @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        UserDO user = userMapper.findByUsername(username);
+    public UserDetails loadUserByUsername(String account) throws UsernameNotFoundException {
+        UserDO user = userMapper.findByAccount(account);
         if (user == null) {
-            throw new UsernameNotFoundException("User not found: " + username);
+            throw new UsernameNotFoundException("User not found: " + account);
         }
         return new SecurityUser(user);
     }

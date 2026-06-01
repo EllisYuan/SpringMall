@@ -95,6 +95,19 @@ stripe:
   test-mode: ${STRIPE_TEST_MODE:true}
   product-image-base-url: ${PRODUCT_IMAGE_BASE_URL:http://localhost:3000}
 
+cloudflare:
+  turnstile:
+    secret-key: ${CF_TURNSTILE_SECRET_KEY}
+    verify-url: https://challenges.cloudflare.com/turnstile/v0/siteverify
+
+twilio:
+  account-sid: ${TWILIO_ACCOUNT_SID:mock}
+  auth-token: ${TWILIO_AUTH_TOKEN:mock}
+  verify:
+    service-sid: ${TWILIO_VERIFY_SERVICE_SID:mock}
+  mock:
+    enabled: ${TWILIO_MOCK_ENABLED:false}
+
 logging:
   level:
     root: info

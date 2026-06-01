@@ -35,6 +35,26 @@ public interface UserMapper {
     UserDO findByUsername(@Param("username") String username);
 
     /**
+     * 根据账号（用户名或邮箱）查询用户
+     * 包含 '@' 时按邮箱匹配，否则按用户名匹配
+     *
+     * @param account 用户名或邮箱地址
+     * @return 用户实体，不存在则返回null
+     * @deprecated 请使用 {@link #findByAccount(String)}，支持手机号登录
+     */
+    @Deprecated
+    UserDO findByUsernameOrEmail(@Param("account") String account);
+
+    /**
+     * 根据账号（用户名、邮箱或手机号）查询用户
+     * 三合一登录查询，按优先级匹配：用户名 > 邮箱 > 手机号
+     *
+     * @param account 用户名、邮箱或手机号
+     * @return 用户实体，不存在则返回null
+     */
+    UserDO findByAccount(@Param("account") String account);
+
+    /**
      * 根据邮箱查询用户
      * 邮箱具有唯一性约束
      *

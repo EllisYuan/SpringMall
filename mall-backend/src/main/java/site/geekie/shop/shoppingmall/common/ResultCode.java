@@ -168,7 +168,29 @@ public enum ResultCode {
     INVALID_TOKEN(40701, "Invalid token"),
 
     //Token已过期
-    TOKEN_EXPIRED(40702, "Token expired");
+    TOKEN_EXPIRED(40702, "Token expired"),
+
+    //人机验证失败
+    TURNSTILE_FAILED(40703, "Human verification failed, please refresh and retry"),
+
+    // ========== OTP / 密码找回相关错误码 ==========
+    //验证码发送失败
+    OTP_SEND_FAILED(50001, "验证码发送失败"),
+
+    //验证码无效或已过期
+    OTP_INVALID(40008, "验证码无效或已过期"),
+
+    //发送过于频繁
+    OTP_TOO_FREQUENT(42901, "发送过于频繁，请稍后再试"),
+
+    //联系方式验证未完成或已过期
+    VERIFY_TOKEN_INVALID(40009, "联系方式验证未完成或已过期"),
+
+    //邮箱或手机号至少填写一项
+    CONTACT_REQUIRED(40010, "邮箱或手机号至少填写一项"),
+
+    //参数格式错误
+    PARAM_INVALID(40011, "参数格式错误");
 
     // 状态码
     private final int code;

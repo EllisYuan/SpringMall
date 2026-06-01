@@ -168,6 +168,13 @@
             <version>3.4.0</version>
         </dependency>
 
+        <!-- Twilio SDK -->
+        <dependency>
+            <groupId>com.twilio.sdk</groupId>
+            <artifactId>twilio</artifactId>
+            <version>10.6.4</version>
+        </dependency>
+
         <!-- Spring Boot DevTools (development only) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

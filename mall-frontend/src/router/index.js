@@ -97,6 +97,12 @@ const routes = [
     component: () => import('@/views/auth/Register.vue'),
     meta: { title: '注册' }
   },
+  {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('@/views/auth/ForgotPassword.vue'),
+    meta: { title: '找回密码' }
+  },
 
   // 管理端路由
   {
@@ -181,8 +187,8 @@ router.beforeEach((to, from, next) => {
     }
   }
 
-  // 已登录用户访问登录/注册页面，跳转到首页
-  if ((to.path === '/login' || to.path === '/register') && token) {
+  // 已登录用户访问登录/注册/找回密码页面，跳转到首页
+  if ((to.path === '/login' || to.path === '/register' || to.path === '/forgot-password') && token) {
     next('/')
     return
   }

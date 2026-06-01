@@ -9,8 +9,12 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import site.geekie.shop.shoppingmall.annotation.RateLimiter;
 import site.geekie.shop.shoppingmall.common.Result;
+import site.geekie.shop.shoppingmall.dto.ForgotPasswordDTO;
 import site.geekie.shop.shoppingmall.dto.LoginDTO;
 import site.geekie.shop.shoppingmall.dto.RegisterDTO;
+import site.geekie.shop.shoppingmall.dto.ResetPasswordDTO;
+import site.geekie.shop.shoppingmall.dto.SendOtpDTO;
+import site.geekie.shop.shoppingmall.dto.VerifyOtpDTO;
 import site.geekie.shop.shoppingmall.service.AuthService;
 import site.geekie.shop.shoppingmall.vo.LoginVO;
 
@@ -30,16 +34,17 @@ public class AuthController {
 
     /**
      * 用户注册接口
+     * 注册成功后直接颁发 JWT，实现注册即登录（前端无需再调用 login）
      *
      * @param request 注册请求，包含用户名、密码、邮箱等信息
-     * @return 统一响应对象
+     * @return 包含 JWT 令牌和用户信息的统一响应对象
      */
     @Operation(summary = "用户注册")
     @RateLimiter(count = 5, period = 60)
     @PostMapping("/register")
-    public Result<Void> register(@Valid @RequestBody RegisterDTO request) {
-        authService.register(request);
-        return Result.success("注册成功", null);
+    public Result<LoginVO> register(@Valid @RequestBody RegisterDTO request) {
+        LoginVO response = authService.register(request);
+        return Result.success("注册成功", response);
     }
 
     /**
@@ -71,6 +76,50 @@ public class AuthController {
         String token = extractToken(httpRequest);
         authService.logout(token);
         return Result.success("登出成功", null);
+    }
+
+    /**
+     * 发送 OTP 验证码
+     */
+    @Operation(summary = "发送OTP验证码")
+    @RateLimiter(count = 5, period = 60)
+    @PostMapping("/send-otp")
+    public Result<Void> sendOtp(@Valid @RequestBody SendOtpDTO otpdto) {
+        authService.sendOtp(otpdto);
+        return Result.success("验证码已发送", null);
+    }
+
+    /**
+     * 校验 OTP 并获取 verificationToken
+     */
+    @Operation(summary = "校验OTP验证码并获取凭证")
+    @RateLimiter(count = 5, period = 60)
+    @PostMapping("/verify-otp")
+    public Result<String> verifyOtp(@Valid @RequestBody VerifyOtpDTO dto) {
+        String token = authService.verifyOtpAndGetToken(dto);
+        return Result.success(token);
+    }
+
+    /**
+     * 忘记密码 — 发送重置验证码
+     */
+    @Operation(summary = "忘记密码-发送验证码")
+    @RateLimiter(count = 3, period = 60)
+    @PostMapping("/forgot-password")
+    public Result<Void> forgotPassword(@Valid @RequestBody ForgotPasswordDTO dto) {
+        authService.forgotPassword(dto);
+        return Result.success("验证码已发送", null);
+    }
+
+    /**
+     * 重置密码
+     */
+    @Operation(summary = "重置密码")
+    @RateLimiter(count = 3, period = 60)
+    @PostMapping("/reset-password")
+    public Result<Void> resetPassword(@Valid @RequestBody ResetPasswordDTO dto) {
+        authService.resetPassword(dto);
+        return Result.success("密码重置成功", null);
     }
 
     /**

@@ -2,9 +2,17 @@
  * 认证状态管理
  */
 import { defineStore } from 'pinia'
-import { login as loginApi, register as registerApi, logout as logoutApi } from '@/api/auth'
+import {
+  login as loginApi,
+  register as registerApi,
+  logout as logoutApi,
+  sendOtp as sendOtpApi,
+  verifyOtp as verifyOtpApi,
+  forgotPassword as forgotPasswordApi,
+  resetPassword as resetPasswordApi
+} from '@/api/auth'
 import { getUser, setUser, getToken, setToken, clearStorage } from '@/utils/storage'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import router from '@/router'
 
 export const useAuthStore = defineStore('auth', {
@@ -40,7 +48,7 @@ export const useAuthStore = defineStore('auth', {
   actions: {
     /**
      * 用户登录
-     * @param {Object} credentials - 登录凭证 { username, password }
+     * @param {Object} credentials - 登录凭证 { account, password, cfToken }
      */
     async login(credentials) {
       try {
@@ -71,26 +79,28 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /**
-     * 用户注册
-     * @param {Object} userInfo - 注册信息 { username, email, password }
+     * 用户注册（注册即登录）
+     * 后端注册成功后直接颁发 JWT，前端写入登录态并跳转主页
+     * @param {Object} userInfo - 注册信息 { username, email/phone, password, cfToken, verificationToken }
      */
     async register(userInfo) {
       try {
-        await registerApi(userInfo)
+        const data = await registerApi(userInfo)
 
-        // 注册成功，显示提示并跳转登录页
-        await ElMessageBox.alert(
-          '注册成功！请使用您的账号登录。',
-          '注册成功',
-          {
-            confirmButtonText: '前往登录',
-            type: 'success'
-          }
-        )
+        // 后端返回 LoginVO：写入登录态并持久化
+        this.token = data.token
+        this.user = data.user
+        this.isLoggedIn = true
 
-        router.push('/login')
+        setToken(data.token)
+        setUser(data.user)
 
-        return true
+        ElMessage.success('注册成功，欢迎加入 Spring Mall')
+
+        // 新注册用户固定为 USER 角色，直接跳主页
+        router.push('/')
+
+        return data
       } catch (error) {
         console.error('注册失败:', error)
         throw error
@@ -144,6 +154,74 @@ export const useAuthStore = defineStore('auth', {
     updateUser(user) {
       this.user = user
       setUser(user)
+    },
+
+    /**
+     * 发送 OTP 验证码
+     * @param {Object} payload - { target, type, purpose }
+     */
+    async sendOtp(payload) {
+      try {
+        return await sendOtpApi(payload)
+      } catch (error) {
+        console.error('发送验证码失败:', error)
+        throw error
+      }
+    },
+
+    /**
+     * 校验注册场景的 OTP，返回 verificationToken
+     * @param {Object} payload - { target, code, purpose }
+     * @returns {Promise<string>} verificationToken
+     */
+    async verifyOtpForRegister(payload) {
+      try {
+        return await verifyOtpApi(payload)
+      } catch (error) {
+        console.error('验证码校验失败:', error)
+        throw error
+      }
+    },
+
+    /**
+     * 校验重置密码场景的 OTP，返回 verificationToken
+     * 与 verifyOtpForRegister 复用同一后端接口，仅作语义化区分
+     * @param {Object} payload - { target, code, purpose }
+     * @returns {Promise<string>} verificationToken
+     */
+    async verifyOtpForReset(payload) {
+      try {
+        return await verifyOtpApi(payload)
+      } catch (error) {
+        console.error('验证码校验失败:', error)
+        throw error
+      }
+    },
+
+    /**
+     * 忘记密码 — 发送重置验证码
+     * @param {Object} payload - { target, type }
+     */
+    async forgotPassword(payload) {
+      try {
+        return await forgotPasswordApi(payload)
+      } catch (error) {
+        console.error('发送重置验证码失败:', error)
+        throw error
+      }
+    },
+
+    /**
+     * 重置密码
+     * @param {Object} payload - { verificationToken, newPassword }
+     */
+    async resetPassword(payload) {
+      try {
+        return await resetPasswordApi(payload)
+      } catch (error) {
+        console.error('重置密码失败:', error)
+        throw error
+      }
     }
   }
 })

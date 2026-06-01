@@ -26,10 +26,10 @@
           @submit.prevent="handleLogin"
         >
           <el-form-item prop="username">
-            <label class="field-label">用户名</label>
+            <label class="field-label">用户名 / 邮箱</label>
             <el-input
               v-model="form.username"
-              placeholder="请输入用户名"
+              placeholder="请输入用户名或邮箱"
               size="large"
               clearable
             />
@@ -53,6 +53,10 @@
           </el-form-item>
 
           <el-form-item>
+            <div ref="turnstileContainer" style="margin-bottom: 4px;"></div>
+          </el-form-item>
+
+          <el-form-item>
             <button
               type="button"
               class="btn-submit"
@@ -70,7 +74,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/store/auth'
 import { ElMessage } from 'element-plus'
 import { ValidationError } from '@/api/request'
@@ -78,6 +82,9 @@ import { ValidationError } from '@/api/request'
 const authStore = useAuthStore()
 const formRef = ref(null)
 const loading = ref(false)
+const turnstileContainer = ref(null)
+const cfToken = ref('')
+let widgetId = null
 
 // 表单数据
 const form = reactive({
@@ -86,11 +93,30 @@ const form = reactive({
   remember: false
 })
 
+onMounted(() => {
+  const initWidget = () => {
+    widgetId = window.turnstile.render(turnstileContainer.value, {
+      sitekey: '0x4AAAAAAC_iBZYfs4zqBg5x',
+      callback: (token) => { cfToken.value = token },
+      'expired-callback': () => { cfToken.value = '' },
+      'error-callback': () => { cfToken.value = '' }
+    })
+  }
+  if (window.turnstile) {
+    initWidget()
+  } else {
+    window.addEventListener('turnstile:loaded', initWidget, { once: true })
+  }
+})
+
+onUnmounted(() => {
+  if (widgetId !== null) window.turnstile?.remove(widgetId)
+})
+
 // 表单验证规则
 const rules = {
   username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 20, message: '用户名长度为 3-20 位', trigger: 'blur' }
+    { required: true, message: '请输入用户名或邮箱', trigger: 'blur' }
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
@@ -127,20 +153,29 @@ const handleLogin = async () => {
     // 验证表单
     await formRef.value.validate()
 
+    if (!cfToken.value) {
+      ElMessage.warning('请完成人机验证')
+      return
+    }
+
     loading.value = true
 
     // 调用登录接口
     await authStore.login({
-      username: form.username,
-      password: form.password
+      account: form.username,
+      password: form.password,
+      cfToken: cfToken.value
     })
 
     // 登录成功后会在 store 中自动跳转
   } catch (error) {
+    // 登录失败后重置 Widget，Token 一次性不可复用
+    window.turnstile?.reset(widgetId)
+    cfToken.value = ''
+
     if (error instanceof ValidationError && error.fields) {
       applyServerErrors(error.fields)
     } else if (error !== false) {
-      // false 是表单验证失败，其他错误记录日志
       console.error('登录失败:', error)
     }
   } finally {

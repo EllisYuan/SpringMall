@@ -55,6 +55,36 @@
         WHERE username = #{username}
     </select>
 
+    <!-- 根据账号（用户名或邮箱）查询用户
+         参数：account - 用户名或邮箱地址
+         返回：用户实体，不存在则返回null
+         说明：包含 '@' 时按邮箱匹配，否则按用户名匹配，用于双模式登录 -->
+    <select id="findByUsernameOrEmail" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_user
+        WHERE
+        <choose>
+            <when test="account.indexOf('@') >= 0">
+                email = #{account}
+            </when>
+            <otherwise>
+                username = #{account}
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- 根据账号（用户名、邮箱或手机号）查询用户（三合一登录）
+         参数：account - 用户名、邮箱或手机号
+         返回：用户实体，不存在则返回null -->
+    <select id="findByAccount" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_user
+        WHERE username = #{account}
+           OR (email IS NOT NULL AND email = #{account})
+           OR (phone IS NOT NULL AND phone = #{account})
+        LIMIT 1
+    </select>
+
     <!-- 根据邮箱查询用户
          参数：email - 邮箱地址
          返回：用户实体，不存在则返回null
@@ -83,8 +113,8 @@
          说明：使用useGeneratedKeys=true自动回填主键ID到user对象 -->
     <insert id="insert" parameterType="site.geekie.shop.shoppingmall.entity.UserDO" useGeneratedKeys="true"
             keyProperty="id">
-        INSERT INTO mall_user (username, password, email, phone, avatar, role, status)
-        VALUES (#{username}, #{password}, #{email}, #{phone}, #{avatar}, #{role}, #{status})
+        INSERT INTO mall_user (username, password, email, phone, avatar, role, status, created_at, updated_at)
+        VALUES (#{username}, #{password}, #{email}, #{phone}, #{avatar}, #{role}, #{status}, #{createdAt}, #{updatedAt})
     </insert>
 
     <!-- 根据用户ID动态更新用户信息

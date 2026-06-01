@@ -7,18 +7,18 @@ import site.geekie.shop.shoppingmall.annotation.SensitiveType;
 
 /**
  * 用户登录请求DTO
- * 包含登录所需的用户名和密码
+ * 支持用户名或邮箱双模式登录
  *
  */
 @Data
 public class LoginDTO {
 
     /**
-     * 用户名
+     * 账号（用户名或邮箱）
      * 验证规则：不能为空
      */
-    @NotBlank(message = "用户名不能为空")
-    private String username;
+    @NotBlank(message = "账号不能为空")
+    private String account;
 
     /**
      * 密码
@@ -27,4 +27,11 @@ public class LoginDTO {
     @NotBlank(message = "密码不能为空")
     @SensitiveField(SensitiveType.PASSWORD)
     private String password;
+
+    /**
+     * Cloudflare Turnstile 前端挑战 token
+     * 验证规则：不能为空
+     */
+    @NotBlank(message = "人机验证不能为空")
+    private String cfToken;
 }
