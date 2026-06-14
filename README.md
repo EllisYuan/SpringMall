@@ -15,21 +15,21 @@
 SpringMall 是一个前后端分离的单体全栈电商应用，完整实现电商业务所需所有链路：分类检索、多渠道支付支持（Alipay/ Stripe）、订单管理、调单漏单检测等。技术层面，Redis 承担认证缓存、接口限流、商品缓存和分布式锁； RabbitMQ 实现订单超时关单与支付掉单补偿；JWT 无状态认证 + Token 黑名单 + AOP 切面日志审计。
 
 ### 首页
-![image](https://img.geekie.site/i/adImg/2026/03/17/160048.png)
+![image](https://img.ellisyuan.com/i/adImg/2026/03/17/160048.png)
 
 
 
 ### 商品页
 
-![image](https://img.geekie.site/i/adImg/2026/03/17/160157.png)
+![image](https://img.ellisyuan.com/i/adImg/2026/03/17/160157.png)
 
 ### 管理后台
 
-![image](https://img.geekie.site/i/adImg/2026/03/17/160229.png)
+![image](https://img.ellisyuan.com/i/adImg/2026/03/17/160229.png)
 
 <p>
-  <img src="https://img.geekie.site/i/adImg/2026/03/17/160245.png" width="49%" />
-  <img src="https://img.geekie.site/i/adImg/2026/03/17/160314.png" width="49%" />
+  <img src="https://img.ellisyuan.com/i/adImg/2026/03/17/160245.png" width="49%" />
+  <img src="https://img.ellisyuan.com/i/adImg/2026/03/17/160314.png" width="49%" />
 </p>
 
 ## Docker 快速启动

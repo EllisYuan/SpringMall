@@ -13,7 +13,7 @@
 
 ---
 ## 支付模块架构
-![PatmenSysArg](https://img.geekie.site/i/adImg/2026/02/26/164641.png)
+![PatmenSysArg](https://img.ellisyuan.com/i/adImg/2026/02/26/164641.png)
 
 ## 支付公共流程
 
