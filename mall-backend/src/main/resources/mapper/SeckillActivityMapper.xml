@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="site.geekie.shop.shoppingmall.mapper.SeckillActivityMapper">
+
+    <resultMap id="BaseResultMap" type="site.geekie.shop.shoppingmall.entity.SeckillActivityDO">
+        <id column="id" property="id"/>
+        <result column="product_id" property="productId"/>
+        <result column="sku_id" property="skuId"/>
+        <result column="activity_name" property="activityName"/>
+        <result column="original_price" property="originalPrice"/>
+        <result column="seckill_price" property="seckillPrice"/>
+        <result column="seckill_stock" property="seckillStock"/>
+        <result column="available_stock" property="availableStock"/>
+        <result column="limit_per_user" property="limitPerUser"/>
+        <result column="start_time" property="startTime"/>
+        <result column="end_time" property="endTime"/>
+        <result column="status" property="status"/>
+        <result column="allow_restock" property="allowRestock"/>
+        <result column="stock_reclaimed" property="stockReclaimed"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="product_name" property="productName"/>
+        <result column="product_image" property="productImage"/>
+        <result column="sku_spec_desc" property="skuSpecDesc"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, product_id, sku_id, activity_name, original_price, seckill_price,
+        seckill_stock, available_stock, limit_per_user, start_time, end_time,
+        status, allow_restock, stock_reclaimed, created_at, updated_at
+    </sql>
+
+    <!-- 联表展示列：a=活动, p=商品, s=SKU。用于需要展示商品名/主图/规格的查询 -->
+    <sql id="Joined_Column_List">
+        a.id, a.product_id, a.sku_id, a.activity_name, a.original_price, a.seckill_price,
+        a.seckill_stock, a.available_stock, a.limit_per_user, a.start_time, a.end_time,
+        a.status, a.allow_restock, a.stock_reclaimed, a.created_at, a.updated_at,
+        p.name AS product_name, p.main_image AS product_image, s.spec_desc AS sku_spec_desc
+    </sql>
+
+    <!-- 根据ID查询活动（联表带商品名/主图/规格，供详情与编辑回显） -->
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT <include refid="Joined_Column_List"/>
+        FROM mall_seckill_activity a
+        LEFT JOIN mall_product p ON p.id = a.product_id
+        LEFT JOIN mall_sku s ON s.id = a.sku_id AND a.sku_id &gt; 0
+        WHERE a.id = #{id}
+    </select>
+
+    <!-- SELECT ... FOR UPDATE：加行写锁，串行化同一活动的并发写者
+         调用方须在事务内使用，事务提交/回滚后锁自动释放。 -->
+    <select id="selectForUpdate" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_seckill_activity
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
+    <!-- 查询进行中或即将开始的活动列表（用户端，联表带商品名/主图/规格） -->
+    <select id="findActiveAndUpcoming" resultMap="BaseResultMap">
+        SELECT <include refid="Joined_Column_List"/>
+        FROM mall_seckill_activity a
+        LEFT JOIN mall_product p ON p.id = a.product_id
+        LEFT JOIN mall_sku s ON s.id = a.sku_id AND a.sku_id &gt; 0
+        WHERE a.status = 1
+          AND a.end_time &gt; NOW()
+        ORDER BY a.start_time ASC
+    </select>
+
+    <!-- 管理后台查询全量活动（含下线状态，联表带商品名/主图/规格），配合 PageHelper 分页 -->
+    <select id="findAllForAdmin" resultMap="BaseResultMap">
+        SELECT <include refid="Joined_Column_List"/>
+        FROM mall_seckill_activity a
+        LEFT JOIN mall_product p ON p.id = a.product_id
+        LEFT JOIN mall_sku s ON s.id = a.sku_id AND a.sku_id &gt; 0
+        ORDER BY a.created_at DESC
+    </select>
+
+    <!-- 查询已结束且预留库存尚未归还的上线活动（结束归还 Job 扫描） -->
+    <select id="findEndedUnreclaimed" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mall_seckill_activity
+        WHERE status = 1
+          AND stock_reclaimed = 0
+          AND end_time &lt; #{now}
+    </select>
+
+    <!-- 插入活动（id 为应用层雪花 ID，由 Service 在 insert 前显式赋值） -->
+    <insert id="insert">
+        INSERT INTO mall_seckill_activity (
+            id, product_id, sku_id, activity_name, original_price, seckill_price,
+            seckill_stock, available_stock, limit_per_user, start_time, end_time,
+            status, allow_restock
+        ) VALUES (
+            #{id}, #{productId}, #{skuId}, #{activityName}, #{originalPrice}, #{seckillPrice},
+            #{seckillStock}, #{availableStock}, #{limitPerUser}, #{startTime}, #{endTime},
+            #{status}, #{allowRestock}
+        )
+    </insert>
+
+    <!-- 更新活动（动态字段，仅草稿态调用） -->
+    <update id="updateById">
+        UPDATE mall_seckill_activity
+        <set>
+            <if test="productId != null">product_id = #{productId},</if>
+            <if test="skuId != null">sku_id = #{skuId},</if>
+            <if test="activityName != null">activity_name = #{activityName},</if>
+            <if test="originalPrice != null">original_price = #{originalPrice},</if>
+            <if test="seckillPrice != null">seckill_price = #{seckillPrice},</if>
+            <if test="seckillStock != null">seckill_stock = #{seckillStock},</if>
+            <if test="availableStock != null">available_stock = #{availableStock},</if>
+            <if test="limitPerUser != null">limit_per_user = #{limitPerUser},</if>
+            <if test="startTime != null">start_time = #{startTime},</if>
+            <if test="endTime != null">end_time = #{endTime},</if>
+            <if test="allowRestock != null">allow_restock = #{allowRestock},</if>
+            updated_at = CURRENT_TIMESTAMP
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <!-- 上线活动：status 0→1，重置可用库存与归还标记；status=0 守卫防并发重复上线 -->
+    <update id="activateById">
+        UPDATE mall_seckill_activity
+        SET status = 1,
+            available_stock = #{availableStock},
+            stock_reclaimed = 0,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND status = 0
+    </update>
+
+    <!-- 下线活动 -->
+    <update id="offlineById">
+        UPDATE mall_seckill_activity
+        SET status = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <!-- 置"预留库存已归还"幂等标记：影响行数 1 表示抢占归还权成功，0 表示已归还过 -->
+    <update id="markReclaimed">
+        UPDATE mall_seckill_activity
+        SET stock_reclaimed = 1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND stock_reclaimed = 0
+    </update>
+
+    <!-- 删除活动（物理删除，仅限草稿/下线状态，由 Service 校验） -->
+    <delete id="deleteById">
+        DELETE FROM mall_seckill_activity WHERE id = #{id}
+    </delete>
+
+    <!-- 乐观锁扣减 available_stock（防超卖 DB 兜底） -->
+    <update id="decreaseStock">
+        UPDATE mall_seckill_activity
+        SET available_stock = available_stock - #{quantity},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND available_stock &gt;= #{quantity}
+    </update>
+
+    <!-- 回补 available_stock -->
+    <update id="increaseStock">
+        UPDATE mall_seckill_activity
+        SET available_stock = available_stock + #{quantity},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+</mapper>

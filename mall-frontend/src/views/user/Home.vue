@@ -40,6 +40,26 @@
       </div>
     </section>
 
+    <!-- Seckill Entry -->
+    <section class="seckill-entry">
+      <div class="container">
+        <div class="seckill-entry-inner">
+          <div class="seckill-entry-content">
+            <p class="seckill-eyebrow">LIMITED TIME</p>
+            <h2 class="seckill-title">限时秒杀</h2>
+            <p class="seckill-desc">好物限量，先到先得 — 每日精选爆款限时抢购</p>
+            <router-link to="/seckills" class="seckill-btn">立即参与</router-link>
+          </div>
+          <div class="seckill-visual">
+            <div class="seckill-badge">
+              <span class="seckill-badge-text">限时</span>
+              <span class="seckill-badge-sub">秒杀</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Featured Products -->
     <section class="products-section">
       <div class="container">
@@ -467,6 +487,101 @@ onMounted(() => {
       .product-card__image { min-height: 240px; aspect-ratio: 2/1.4; }
     }
   }
+}
+
+// ─── Seckill Entry ───────────────────────────────────
+.seckill-entry {
+  background: $bg-dark;
+  border-top: 1px solid $border-light;
+}
+
+.seckill-entry-inner {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: $spacing-xl 0;
+  gap: $spacing-xl;
+
+  @include mobile {
+    grid-template-columns: 1fr;
+    padding: $spacing-lg 0;
+  }
+}
+
+.seckill-entry-content {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.seckill-eyebrow {
+  font-size: $font-size-xs;
+  font-weight: $font-weight-bold;
+  letter-spacing: 0.14em;
+  color: rgba(255,255,255,0.45);
+  text-transform: uppercase;
+}
+
+.seckill-title {
+  font-size: clamp(28px, 3vw, 44px);
+  font-weight: $font-weight-bold;
+  color: #fff;
+  letter-spacing: -0.02em;
+  line-height: $line-height-tight;
+}
+
+.seckill-desc {
+  font-size: $font-size-sm;
+  color: rgba(255,255,255,0.55);
+  line-height: $line-height-base;
+  max-width: 360px;
+}
+
+.seckill-btn {
+  display: inline-flex;
+  align-items: center;
+  margin-top: $spacing-sm;
+  padding: 12px 28px;
+  background: $danger-color;
+  color: #fff;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-bold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background $transition-base;
+  align-self: flex-start;
+
+  &:hover { background: #a53126; }
+}
+
+.seckill-visual {
+  @include mobile { display: none; }
+}
+
+.seckill-badge {
+  width: 120px;
+  height: 120px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.seckill-badge-text {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-bold;
+  color: $danger-color;
+  letter-spacing: 0.04em;
+}
+
+.seckill-badge-sub {
+  font-size: $font-size-base;
+  font-weight: $font-weight-medium;
+  color: rgba(255,255,255,0.6);
 }
 
 // ─── Value Props ─────────────────────────────────────

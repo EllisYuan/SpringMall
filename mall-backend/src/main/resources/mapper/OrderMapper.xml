@@ -12,6 +12,8 @@
         <result column="pay_amount" property="payAmount"/>
         <result column="freight" property="freight"/>
         <result column="status" property="status"/>
+        <result column="source" property="source"/>
+        <result column="seckill_activity_id" property="seckillActivityId"/>
         <result column="payment_no" property="paymentNo"/>
         <result column="payment_method" property="paymentMethod"/>
         <result column="payment_time" property="paymentTime"/>
@@ -28,6 +30,7 @@
     <!-- 基础字段列表（仅mall_order表字段，不含支付单号） -->
     <sql id="Base_Column_List">
         ord.id, ord.order_no, ord.user_id, ord.total_amount, ord.pay_amount, ord.freight, ord.status,
+        ord.source, ord.seckill_activity_id,
         ord.payment_method, ord.payment_time, ord.ship_time, ord.complete_time,
         ord.receiver_name, ord.receiver_phone, ord.receiver_address, ord.remark,
         ord.created_at, ord.updated_at
@@ -36,6 +39,7 @@
     <!-- 完整字段列表（包含支付单号，LEFT JOIN mall_payment） -->
     <sql id="Full_Column_List">
         ord.id, ord.order_no, ord.user_id, ord.total_amount, ord.pay_amount, ord.freight, ord.status,
+        ord.source, ord.seckill_activity_id,
         ord.payment_method, ord.payment_time, ord.ship_time, ord.complete_time,
         ord.receiver_name, ord.receiver_phone, ord.receiver_address, ord.remark,
         ord.created_at, ord.updated_at,
@@ -85,13 +89,15 @@
         ORDER BY ${sortColumn} ${sortDir}
     </select>
 
-    <!-- 插入订单 -->
+    <!-- 插入订单（source 未设置时默认 0 普通订单，兼容既有下单链路） -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO mall_order (
             order_no, user_id, total_amount, pay_amount, freight, status,
+            source, seckill_activity_id,
             receiver_name, receiver_phone, receiver_address, remark
         ) VALUES (
             #{orderNo}, #{userId}, #{totalAmount}, #{payAmount}, #{freight}, #{status},
+            COALESCE(#{source}, 0), #{seckillActivityId},
             #{receiverName}, #{receiverPhone}, #{receiverAddress}, #{remark}
         )
     </insert>

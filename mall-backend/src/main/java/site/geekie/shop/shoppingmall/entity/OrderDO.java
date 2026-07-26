@@ -49,6 +49,17 @@ public class OrderDO {
     private String status;
 
     /**
+     * 订单来源
+     * 0-普通订单, 1-秒杀订单（超时关单按此分流库存回补）
+     */
+    private Integer source;
+
+    /**
+     * 秒杀活动ID（source=1 时有值，普通订单为 null）
+     */
+    private Long seckillActivityId;
+
+    /**
      * 支付单号（来自mall_payment表，通过JOIN查询获取）
      */
     private String paymentNo;

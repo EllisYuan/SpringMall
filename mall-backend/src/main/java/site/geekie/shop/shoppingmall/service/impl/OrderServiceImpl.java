@@ -26,6 +26,7 @@ import site.geekie.shop.shoppingmall.security.SecurityUser;
 import site.geekie.shop.shoppingmall.mq.producer.OrderMessageProducer;
 import site.geekie.shop.shoppingmall.service.OrderService;
 import site.geekie.shop.shoppingmall.service.PaymentService;
+import site.geekie.shop.shoppingmall.service.StockRestoreService;
 import site.geekie.shop.shoppingmall.util.OrderNoGenerator;
 import site.geekie.shop.shoppingmall.util.RedisDistributedLock;
 import site.geekie.shop.shoppingmall.util.StockRedisService;
@@ -64,6 +65,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderConverter orderConverter;
     private final OrderItemConverter orderItemConverter;
     private final PaymentService paymentService;
+    private final StockRestoreService stockRestoreService;
     private final OrderMessageProducer orderMessageProducer;
     private final StockRedisService stockRedisService;
     private final RedisDistributedLock redisDistributedLock;
@@ -432,27 +434,9 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        // 恢复库存
+        // 恢复库存（统一回补服务，按订单来源分流普通/秒杀链路）
         List<OrderItemDO> items = orderItemMapper.findByOrderId(order.getId());
-        List<OrderItemDO> noSkuItems = new ArrayList<>();
-        for (OrderItemDO item : items) {
-            if (item.getSkuId() != null && item.getSkuId() > 0) {
-                // 有 SKU：恢复 SKU 库存
-                skuMapper.increaseStock(item.getSkuId(), item.getQuantity());
-            } else {
-                // 无 SKU：恢复商品库存
-                productMapper.increaseStock(item.getProductId(), item.getQuantity());
-                noSkuItems.add(item);
-            }
-        }
-        // 恢复 Redis 库存（仅无 SKU 商品）
-        if (!noSkuItems.isEmpty()) {
-            try {
-                stockRedisService.batchRestoreStock(noSkuItems);
-            } catch (Exception e) {
-                log.warn("取消订单时恢复 Redis 库存异常 - 订单号: {}", orderNo, e);
-            }
-        }
+        stockRestoreService.restoreForClosedOrder(order, items, "用户取消");
 
         // 已付款订单取消时，扣减销量
         if (OrderStatus.PAID.getCode().equals(order.getStatus())) {
@@ -582,25 +566,9 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        // 恢复库存
+        // 恢复库存（统一回补服务，按订单来源分流普通/秒杀链路）
         List<OrderItemDO> items = orderItemMapper.findByOrderId(order.getId());
-        List<OrderItemDO> noSkuItemsAdmin = new ArrayList<>();
-        for (OrderItemDO item : items) {
-            if (item.getSkuId() != null && item.getSkuId() > 0) {
-                skuMapper.increaseStock(item.getSkuId(), item.getQuantity());
-            } else {
-                productMapper.increaseStock(item.getProductId(), item.getQuantity());
-                noSkuItemsAdmin.add(item);
-            }
-        }
-        // 恢复 Redis 库存（仅无 SKU 商品）
-        if (!noSkuItemsAdmin.isEmpty()) {
-            try {
-                stockRedisService.batchRestoreStock(noSkuItemsAdmin);
-            } catch (Exception e) {
-                log.warn("管理员取消订单时恢复 Redis 库存异常 - 订单号: {}", orderNo, e);
-            }
-        }
+        stockRestoreService.restoreForClosedOrder(order, items, "管理员取消");
 
         // 已付款订单取消时，扣减销量
         if (OrderStatus.PAID.getCode().equals(order.getStatus())) {

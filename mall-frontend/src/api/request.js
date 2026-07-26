@@ -20,6 +20,23 @@ export class ValidationError extends Error {
   }
 }
 
+/**
+ * 业务异常类
+ * 当后端返回特定业务错误码（如秒杀相关 408xx）时抛出
+ * 调用方可通过 error instanceof BusinessError && error.code === 40810 做精细处理
+ * 注意：抛出此类时拦截器不会自动弹 ElMessage，由调用方决定如何提示
+ */
+export class BusinessError extends Error {
+  constructor(code, message) {
+    super(message)
+    this.name = 'BusinessError'
+    this.code = code
+  }
+}
+
+// 不自动弹 Toast、交由调用方处理的业务错误码集合
+const SILENT_CODES = new Set([40810, 40811])
+
 // 创建 axios 实例
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
@@ -58,6 +75,11 @@ request.interceptors.response.use(
     // 字段校验错误：不弹全局提示，传递给表单组件处理
     if (code === 400 && message === 'Validation failed' && data && typeof data === 'object') {
       return Promise.reject(new ValidationError(message, data))
+    }
+
+    // 静默业务错误码：不弹 Toast，由调用方自行处理
+    if (SILENT_CODES.has(code)) {
+      return Promise.reject(new BusinessError(code, message))
     }
 
     // 其他业务错误

@@ -62,6 +62,25 @@ pagehelper:
   helper-dialect: mysql
   reasonable: true
 
+# 雪花 ID 生成器配置（对应 SnowflakeProperties，全局通用）
+snowflake:
+  worker-id: ${SNOWFLAKE_WORKER_ID:0}  # 机器 ID（0-1023），单机默认 0；多实例部署须每实例唯一
+
+# 秒杀模块配置（对应 SeckillProperties，均为安全默认值）
+seckill:
+  bucket-count: 10          # Redis 库存分桶数
+  gate-multiplier: 5        # 总量闸门倍率 k（上限 = 秒杀库存 × k）
+  soldout-ttl: 3600         # 售罄标记 TTL（秒）
+  msg-dedup-ttl: 86400      # MQ 消息去重 key TTL（秒）
+  result-ttl: 300           # 抢购结果标记 TTL（秒）
+  risk:
+    fail-threshold: 5       # 用户/IP 累计失败次数阈值
+    freq-threshold: 10      # 频率窗口内请求次数阈值
+    freq-window-seconds: 60 # 频率滑动窗口时长（秒）
+  sse:
+    timeout-ms: 300000      # SseEmitter 超时（毫秒）
+    heartbeat-seconds: 15   # SSE 心跳间隔（秒）
+
 alipay:
   app-id: ${ALIPAY_APP_ID:支付宝号}
   private-key: ${ALIPAY_PRIVATE_KEY:支付宝私钥}

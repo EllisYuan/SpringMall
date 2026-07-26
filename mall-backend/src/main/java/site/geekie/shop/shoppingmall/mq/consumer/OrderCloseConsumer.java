@@ -16,8 +16,7 @@ import site.geekie.shop.shoppingmall.entity.PaymentDO;
 import site.geekie.shop.shoppingmall.mapper.OrderItemMapper;
 import site.geekie.shop.shoppingmall.mapper.OrderMapper;
 import site.geekie.shop.shoppingmall.mapper.PaymentMapper;
-import site.geekie.shop.shoppingmall.mapper.ProductMapper;
-import site.geekie.shop.shoppingmall.util.StockRedisService;
+import site.geekie.shop.shoppingmall.service.StockRestoreService;
 
 import java.io.IOException;
 import java.util.List;
@@ -31,7 +30,8 @@ import java.util.List;
  * 2. 幂等检查：只处理 UNPAID 状态的订单
  * 3. 查询是否存在 PENDING 支付记录：
  *    - 有 PENDING 记录 → 说明掉单补偿（PaymentCheckConsumer）尚未完成，本消费者跳过，由其负责关单
- *    - 无 PENDING 记录 → 执行完整关单：恢复库存 + 取消订单
+ *    - 无 PENDING 记录 → 执行完整关单：按订单来源分流恢复库存 + 取消订单
+ * 4. 库存回补统一委托 StockRestoreService，按订单 source 分流普通/秒杀链路（口径详见该服务注释）
  *
  * 事务策略：使用 TransactionTemplate 编程式事务，确保数据库操作提交成功后才 ack，
  * 避免 @Transactional 与手动 ack 混用导致事务未提交但消息已被确认的问题。
@@ -43,10 +43,9 @@ public class OrderCloseConsumer {
 
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
-    private final ProductMapper productMapper;
     private final PaymentMapper paymentMapper;
     private final TransactionTemplate transactionTemplate;
-    private final StockRedisService stockRedisService;
+    private final StockRestoreService stockRestoreService;
 
     @RabbitListener(queues = RabbitMQConfig.ORDER_CLOSE_QUEUE)
     public void handleOrderClose(String orderNo,
@@ -79,19 +78,9 @@ public class OrderCloseConsumer {
                     return;
                 }
 
-                // 4. 无 PENDING 支付记录：执行完整关单（恢复库存 + 取消订单）
+                // 4. 无 PENDING 支付记录：回补库存（统一回补服务，按订单来源分流普通/秒杀链路）
                 List<OrderItemDO> items = orderItemMapper.findByOrderId(order.getId());
-                for (OrderItemDO item : items) {
-                    productMapper.increaseStock(item.getProductId(), item.getQuantity());
-                    log.debug("恢复库存 - 商品ID: {}, 数量: {}", item.getProductId(), item.getQuantity());
-                }
-
-                // 恢复 Redis 库存
-                try {
-                    stockRedisService.batchRestoreStock(items);
-                } catch (Exception e) {
-                    log.warn("订单超时关单恢复 Redis 库存异常 - 订单号: {}", orderNo, e);
-                }
+                stockRestoreService.restoreForClosedOrder(order, items, "超时关单");
 
                 // 5. 更新订单状态为已取消
                 orderMapper.updateStatus(orderNo, OrderStatus.CANCELLED.getCode());

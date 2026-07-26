@@ -81,6 +81,7 @@ public enum ResultCode {
     SKU_OUT_OF_STOCK(40152, "SKU is out of stock"),
     SKU_REQUIRED(40153, "SKU is required for this product"),
     SKU_CONFIG_INVALID(40154, "SKU configuration is invalid"),
+    SKU_UNAVAILABLE(40155, "SKU is unavailable"),
 
     // ========== 分类相关错误码 (40201-40299) ==========
     //分类不存在
@@ -190,7 +191,41 @@ public enum ResultCode {
     CONTACT_REQUIRED(40010, "邮箱或手机号至少填写一项"),
 
     //参数格式错误
-    PARAM_INVALID(40011, "参数格式错误");
+    PARAM_INVALID(40011, "参数格式错误"),
+
+    // ========== 秒杀相关错误码 (40801-40899) ==========
+    //秒杀活动不存在
+    SECKILL_ACTIVITY_NOT_FOUND(40801, "秒杀活动不存在"),
+
+    //秒杀活动未开始
+    SECKILL_NOT_STARTED(40802, "秒杀活动尚未开始"),
+
+    //秒杀活动已结束
+    SECKILL_ENDED(40803, "秒杀活动已结束"),
+
+    //秒杀商品已售罄
+    SECKILL_SOLD_OUT(40804, "秒杀商品已售罄"),
+
+    //超过限购数量
+    SECKILL_LIMIT_EXCEEDED(40805, "超过限购数量"),
+
+    //秒杀服务暂时不可用（Redis 不可用降级）
+    SECKILL_SERVICE_UNAVAILABLE(40806, "秒杀服务暂时不可用，请稍后重试"),
+
+    //秒杀价必须低于或等于原价
+    SECKILL_PRICE_INVALID(40807, "秒杀价不能高于原价"),
+
+    //秒杀库存超出商品库存
+    SECKILL_STOCK_EXCEEDED(40808, "秒杀库存不能超过商品当前库存"),
+
+    //活动时间段无效
+    SECKILL_TIME_INVALID(40809, "活动结束时间必须晚于开始时间"),
+
+    //需要进行人机验证（风险触发式 step-up）
+    SECKILL_CAPTCHA_REQUIRED(40810, "请完成人机验证后重试"),
+
+    //活动总量闸门拒绝（当前参与人数过多）
+    SECKILL_GATE_REJECTED(40811, "当前参与人数过多，请稍后再试");
 
     // 状态码
     private final int code;

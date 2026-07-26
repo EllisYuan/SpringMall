@@ -16,6 +16,17 @@ export const getAllProducts = (params) => {
 }
 
 /**
+ * 获取商品详情（管理端，可取下架商品，含 hasSku/skuList）
+ * @param {number} id - 商品 ID
+ */
+export const getProductById = (id) => {
+  return request({
+    url: `/admin/products/${id}`,
+    method: 'GET'
+  })
+}
+
+/**
  * 创建商品
  * @param {Object} data - 商品信息
  */

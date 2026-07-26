@@ -80,6 +80,18 @@ const routes = [
         name: 'Address',
         component: () => import('@/views/user/Address.vue'),
         meta: { title: '地址管理', requiresAuth: true }
+      },
+      {
+        path: '/seckills',
+        name: 'SeckillList',
+        component: () => import('@/views/user/SeckillList.vue'),
+        meta: { title: '限时秒杀', requiresAuth: true }
+      },
+      {
+        path: '/seckills/:id',
+        name: 'SeckillDetail',
+        component: () => import('@/views/user/SeckillDetail.vue'),
+        meta: { title: '秒杀详情', requiresAuth: true }
       }
     ]
   },
@@ -145,6 +157,12 @@ const routes = [
         name: 'UserManage',
         component: () => import('@/views/admin/UserManage.vue'),
         meta: { title: '用户管理' }
+      },
+      {
+        path: 'seckill',
+        name: 'SeckillManage',
+        component: () => import('@/views/admin/SeckillManage.vue'),
+        meta: { title: '秒杀管理' }
       }
     ]
   },

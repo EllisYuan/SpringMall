@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="site.geekie.shop.shoppingmall.mapper.SeckillOrderMapper">
+
+    <resultMap id="BaseResultMap" type="site.geekie.shop.shoppingmall.entity.SeckillOrderDO">
+        <id column="id" property="id"/>
+        <result column="order_id" property="orderId"/>
+        <result column="order_no" property="orderNo"/>
+        <result column="user_id" property="userId"/>
+        <result column="activity_id" property="activityId"/>
+        <result column="product_id" property="productId"/>
+        <result column="sku_id" property="skuId"/>
+        <result column="product_name" property="productName"/>
+        <result column="product_image" property="productImage"/>
+        <result column="spec_desc" property="specDesc"/>
+        <result column="seckill_price" property="seckillPrice"/>
+        <result column="quantity" property="quantity"/>
+        <result column="request_id" property="requestId"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <!-- 非持久化展示字段：JOIN mall_order / mall_seckill_activity 填充 -->
+        <result column="order_status" property="orderStatus"/>
+        <result column="total_amount" property="totalAmount"/>
+        <result column="pay_amount" property="payAmount"/>
+        <result column="activity_name" property="activityName"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, order_id, order_no, user_id, activity_id, product_id, sku_id,
+        product_name, product_image, spec_desc, seckill_price, quantity,
+        request_id, created_at, updated_at
+    </sql>
+
+    <!-- 插入秒杀订单明细快照（uk_request_id / uk_order_id 唯一索引兜底幂等；
+         id 为应用层雪花 ID，由消费者在 insert 前显式赋值） -->
+    <insert id="insert">
+        INSERT INTO mall_seckill_order (
+            id, order_id, order_no, user_id, activity_id, product_id, sku_id,
+            product_name, product_image, spec_desc, seckill_price, quantity, request_id
+        ) VALUES (
+            #{id}, #{orderId}, #{orderNo}, #{userId}, #{activityId}, #{productId}, #{skuId},
+            #{productName}, #{productImage}, #{specDesc}, #{seckillPrice}, #{quantity}, #{requestId}
+        )
+    </insert>
+
+    <!-- 用户在某活动下的未取消订单累计购买量（DB 权威限购校验，须持活动行写锁调用）
+         JOIN mall_order 排除 CANCELLED：超时取消的订单释放限购额度 -->
+    <select id="sumQuantityByActivityAndUser" resultType="java.lang.Integer">
+        SELECT SUM(so.quantity)
+        FROM mall_seckill_order so
+        JOIN mall_order o ON o.id = so.order_id
+        WHERE so.activity_id = #{activityId}
+          AND so.user_id = #{userId}
+          AND o.status != 'CANCELLED'
+    </select>
+
+    <!-- "我的秒杀订单"列表：LEFT JOIN mall_order 取状态/金额（订单归档后仍保留快照行），
+         LEFT JOIN 活动表取活动名。配合 PageHelper 分页 -->
+    <select id="findByUserId" resultMap="BaseResultMap">
+        SELECT so.id, so.order_id, so.order_no, so.user_id, so.activity_id, so.product_id, so.sku_id,
+               so.product_name, so.product_image, so.spec_desc, so.seckill_price, so.quantity,
+               so.request_id, so.created_at, so.updated_at,
+               o.status AS order_status, o.total_amount, o.pay_amount,
+               a.activity_name
+        FROM mall_seckill_order so
+        LEFT JOIN mall_order o ON o.id = so.order_id
+        LEFT JOIN mall_seckill_activity a ON a.id = so.activity_id
+        WHERE so.user_id = #{userId}
+        ORDER BY so.created_at DESC
+    </select>
+
+</mapper>

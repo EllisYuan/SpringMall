@@ -15,6 +15,7 @@
             <router-link to="/" :class="['nav-link', { 'nav-link--active': isHomeActive }]">首页</router-link>
             <router-link to="/products" :class="['nav-link', { 'nav-link--active': isAllProductsActive }]">全部商品</router-link>
             <router-link to="/products?categoryId=new" :class="['nav-link', { 'nav-link--active': isNewProductsActive }]">新品</router-link>
+            <router-link to="/seckills" :class="['nav-link nav-link--seckill', { 'nav-link--active': isSeckillActive }]">限时秒杀</router-link>
           </nav>
 
           <!-- 中：Logo -->
@@ -74,6 +75,7 @@
             <div class="footer-col">
               <h4>购物</h4>
               <router-link to="/products">全部商品</router-link>
+              <router-link to="/seckills">限时秒杀</router-link>
               <router-link to="/orders">我的订单</router-link>
               <router-link to="/cart">购物车</router-link>
             </div>
@@ -110,6 +112,7 @@ const cartCount = computed(() => cartStore.cartCount)
 const isHomeActive = computed(() => route.path === '/')
 const isNewProductsActive = computed(() => route.path === '/products' && route.query.categoryId === 'new')
 const isAllProductsActive = computed(() => route.path === '/products' && !isNewProductsActive.value)
+const isSeckillActive = computed(() => route.path.startsWith('/seckills'))
 
 // 滚动状态
 const isScrolled = ref(false)
@@ -244,6 +247,14 @@ const handleCommand = (command) => {
 
     &::after { display: none; }
     &:hover { background: #333; }
+  }
+
+  &--seckill {
+    color: $danger-color !important;
+    font-weight: $font-weight-bold;
+
+    &::after { background: $danger-color; }
+    &:hover { color: #8e2318 !important; }
   }
 }
 

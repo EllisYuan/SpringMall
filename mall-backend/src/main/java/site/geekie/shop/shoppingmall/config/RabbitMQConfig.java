@@ -1,8 +1,12 @@
 package site.geekie.shop.shoppingmall.config;
 
 import org.springframework.amqp.core.*;
+import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.amqp.support.converter.SimpleMessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.List;
 
 /**
  * RabbitMQ 队列配置
@@ -16,9 +20,33 @@ import org.springframework.context.annotation.Configuration;
  * 掉单补偿（TTL=5min）：
  *   payment.delay.exchange --[payment.delay]--> payment.delay.queue
  *     (TTL 到期后) --[DLX]--> payment.process.exchange --[payment.check]--> payment.check.queue
+ *
+ * 秒杀异步落单（即时消费，无延迟）：
+ *   seckill.order.exchange --[seckill.order]--> seckill.order.queue --> SeckillOrderConsumer
  */
 @Configuration
 public class RabbitMQConfig {
+
+    /**
+     * 消息转换器：Java 序列化 + 反序列化白名单。
+     *
+     * 秒杀异步下单通过 MQ 传递 SeckillOrderDTO 对象，Spring AMQP 默认的允许类检查
+     * 只信任标准类型，会以 SecurityException 拒绝反序列化自定义类（导致消费者落库失败、抢购失败）。
+     * 这里显式放行本项目 dto 包及常用 JDK 类型；String 等标准消息不受影响。
+     * Spring Boot 会自动将此 MessageConverter 装配到 RabbitTemplate（生产者）与监听容器工厂（消费者）。
+     */
+    @Bean
+    public MessageConverter messageConverter() {
+        SimpleMessageConverter converter = new SimpleMessageConverter();
+        converter.setAllowedListPatterns(List.of(
+                "site.geekie.shop.shoppingmall.dto.*",
+                "java.util.*",
+                "java.lang.*",
+                "java.time.*",
+                "java.math.*"
+        ));
+        return converter;
+    }
 
     // ======================== 常量定义 ========================
 
@@ -39,6 +67,11 @@ public class RabbitMQConfig {
     public static final String PAYMENT_PROCESS_EXCHANGE = "payment.process.exchange";
     public static final String PAYMENT_CHECK_QUEUE = "payment.check.queue";
     public static final String PAYMENT_CHECK_ROUTING_KEY = "payment.check";
+
+    // 秒杀异步落单
+    public static final String SECKILL_ORDER_EXCHANGE = "seckill.order.exchange";
+    public static final String SECKILL_ORDER_QUEUE = "seckill.order.queue";
+    public static final String SECKILL_ORDER_ROUTING_KEY = "seckill.order";
 
     // TTL（毫秒）
     private static final int ORDER_TTL_MS = 15 * 60 * 1000;   // 15 分钟：下单后未支付自动取消
@@ -158,5 +191,34 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(paymentCheckQueue())
                 .to(paymentProcessExchange())
                 .with(PAYMENT_CHECK_ROUTING_KEY);
+    }
+
+    // ======================== 秒杀异步落单 ========================
+
+    /**
+     * 秒杀订单 Exchange（幂等声明，不影响现有队列）
+     */
+    @Bean
+    public DirectExchange seckillOrderExchange() {
+        return new DirectExchange(SECKILL_ORDER_EXCHANGE);
+    }
+
+    /**
+     * 秒杀订单队列（Redis 预扣成功后的落单消息，消费者串行落库削峰）
+     * 超时关单复用现有 order.delay 延迟链路，此处不新增延迟队列
+     */
+    @Bean
+    public Queue seckillOrderQueue() {
+        return QueueBuilder.durable(SECKILL_ORDER_QUEUE).build();
+    }
+
+    /**
+     * 秒杀订单队列绑定
+     */
+    @Bean
+    public Binding seckillOrderBinding() {
+        return BindingBuilder.bind(seckillOrderQueue())
+                .to(seckillOrderExchange())
+                .with(SECKILL_ORDER_ROUTING_KEY);
     }
 }
