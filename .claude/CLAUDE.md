@@ -1,144 +1,92 @@
-# springMall — Claude Code Agents 项目宪章
+# springMall — Claude Code 项目宪章
+
+全栈电商项目。后端 `mall-backend/`（Spring Boot 3.3.6 / Java 21），前端 `mall-frontend/`（Vue 3 / Vite 7）。
 
 ---
 
-## 1. 项目架构概览
+## 1. 架构速览
 
-springMall 是一个全栈电商应用项目。
-
-### 后端（`mall-backend/`）
-- **框架**：Spring Boot 3.3.6，Java 21
+### 后端技术栈
+- **框架**：Spring Boot 3.3.6，Java 21；构建 Maven（`mvnw`）
 - **ORM**：MyBatis，XML Mapper（`classpath:mapper/*.xml`）
+- **分页**：PageHelper（`PageHelper.startPage` + `PageInfo`，统一包装为 `PageResult<>`）
 - **安全**：Spring Security + JWT（JJWT 0.12.6），无状态会话
-- **数据库**：MySQL 8，HikariCP 连接池
-- **接口风格**：RESTful，所有路径以 `/api/v1/` 为前缀
-- **响应格式**：统一 `Result<T>` 包装 — `{ code, message, data }`
-- **校验**：Jakarta Bean Validation（`@Valid` 作用于 `@RequestBody`）
-- **接口文档**：Swagger，由 springdoc-openapi 2.3.0 提供
-- **构建**：Maven（`mvnw` 包装器）
+- **存储**：MySQL 8（HikariCP） + Redis（缓存/会话）
+- **消息**：RabbitMQ（异步/解耦）
+- **定时任务**：XXL-JOB
+- **支付**：支付宝 + Stripe
+- **接口**：RESTful，前缀 `/api/v1/`；统一 `Result<T>` 包装 `{ code, message, data }`
+- **校验**：Jakarta Bean Validation；
+- **接口文档**：springdoc-openapi（Swagger）
+- 包根 `site.geekie.shop.shoppingmall`：`controller/`(含 `admin/`)、`service/`+`service/impl/`、`mapper/`、`entity/`(DO)、`dto/`、`vo/`、`converter/`(MapStruct)、`config/`、`security/`、`exception/`、`common/`、`util/`
 
-包根路径：`site.geekie.shop.shoppingmall`
-
-| 包目录 | 职责 |
-|---|---|
-| `controller/` | HTTP 接口层。返回 `Result<T>` |
-| `controller/admin/` | 管理员专用接口（需 ADMIN 角色） |
-| `service/` | 业务逻辑接口定义 |
-| `service/impl/` | 业务逻辑实现 |
-| `mapper/` | MyBatis Mapper 接口 |
-| `entity/` | 映射到数据库实体类，Do对象 |
-| `dto/` | 请求入参，DTO对象 |
-| `vo/` | 返回给前端的VO响应对象 |
-| `common/` |
-| `config/` | `SecurityConfig`、`SwaggerConfig`等 配置文件路径 |
-| `security/` |
-| `exception/` | `BusinessException`、`GlobalExceptionHandler`异常处理捕获层 |
-| `util/` | 通用工具类 |
-
-### 前端（`mall-frontend/`）
-- **框架**：Vue 3（`<script setup>` / Composition API）
-- **状态管理**：Pinia — Options 风格 `defineStore`（`state`/`getters`/`actions`）
-- **UI 组件库**：Element Plus 2.13+
-- **HTTP 客户端**：Axios，封装在 `src/api/request.js`
-- **构建工具**：Vite 7 + Sass
-- **生产构建**：`pnpm run build` → `dist/`
-- **开发服务器**：`pnpm run dev`（端口 3000，`/api/` 代理到 localhost:8080）
-
-| 目录 | 职责 |
-|---|---|
-| `src/api/` | Axios 接口调用模块，按业务领域一个文件（`product.js`、`cart.js`…） |
-| `src/store/` | Pinia Store（`auth.js`、`cart.js`、`app.js`、`user.js`） |
-| `src/views/` | 页面级组件。子目录：`user/`、`admin/`、`auth/` |
-| `src/components/` | 可复用组件。`common/` 中有 `Loading.vue`、`Empty.vue` |
-| `src/layouts/` | 布局包装组件（`UserLayout`、`AdminLayout`） |
-| `src/router/` | Vue Router 配置 + 导航守卫 |
-| `src/utils/` | 纯工具函数：`storage.js`、`format.js`、`constants.js`、`validate.js` |
-| `src/assets/` | SCSS 变量、重置样式、公共样式 |
-
-### 部署（项目根目录）
-- `docker-compose.yml`：后端宿主端口 **25116**，前端宿主端口 **26115**
-- 前端 Nginx 将 `/api/` 代理到 `backend:8080`
-- 后端通过 `host.docker.internal` 连接宿主机 MySQL
-- 密钥和凭据通过 `.env` → docker-compose 变量插值传入
+### 前端技术栈
+- Vue 3（`<script setup>` / Composition API）+ Pinia（**Options 风格**）+ Element Plus + Axios（封装于 `src/api/request.js`）+ Vite 7 + Sass
+- 目录：`api/` `store/` `views/`(user,admin,auth) `components/`(common) `layouts/` `router/` `utils/`
 
 ---
 
-## 2. 团队协作流程
+## 2. 开发工作流
 
-### 简单提问或修改
-直接调用主agent进行回答
+涉及需求新增功能交付：主 session 先澄清需求、拆解任务（复杂需求可开 GitHub Issue 记录，见 `docs/agents/issue-tracker.md`），再委派对应 agent 实施 → 审查 → 验收。简单提问或小修改用主 session 直接处理，无需走完整流程。
 
-### 复杂功能交付流程
-```
-用户发起功能需求
-    │
-    ▼
-主 Session — 分析需求范围
-    │
-    ├── 需要后端变更？  ──►  backend-dev 实现
-    │                            │
-    │                            ├──► doc-writer — 生成/更新 DevDoc
-    │                            │
-    ├── 需要前端变更？  ──►  frontend-dev 实现
-    │                            │
-    ▼                            ▼
-    └──────────┬─────────────────┘
-               ▼
-        code-reviewer — 审查所有变更文件（仅读不写）
-               │
-               ▼
-        test-validator — mvnw test + pnpm run build(用户请求测试时才触发)
-               │
-               ▼
-  （若涉及基础设施）devops-deploy — 验证 Docker 配置(用户请求测试时才触发)
-               │
-               ▼
-    主 Session 将结果汇报给用户
-```
+### 委派硬规则（不可违反）
+> **实施阶段，业务代码的增删改一律经对应子 agent；主 session 只做澄清、拆任务与调度，不直接编辑 `mall-backend/src`、`mall-frontend/src` 下的业务代码。**
 
-### 交接协议
-- **backend-dev** 完成后 → 说明：修改了哪些文件、API 合约（接口路径、请求/响应结构）、是否需要数据库迁移。
-- **frontend-dev** 在开始前读取上述交接信息，确保拿到正确的 API 结构。
-- **doc-writer** 收到 backend-dev 交接信息后启动。自行读取代码验证接口细节，生成或更新 `mall-backend/DevDoc/` 文档。可与 code-reviewer 并行执行。
-- **code-reviewer** 收到所有变更文件的清单，逐一阅读。不修改任何文件，仅输出按 BLOCKER / WARNING / INFO 分级的审查报告。
-- **test-validator** 用户请求测试时才触发，不阅读源代码。仅运行构建和测试命令，报告退出码和错误输出。
-- **devops-deploy** 用户请求测试时才触发。
+| 链路环节 | 负责 |
+|---|---|
+| 需求澄清 / 拆任务 | 主 session |
+| 后端代码（Java / Mapper XML / yml / pom） | **backend-dev** |
+| 前端代码（Vue / JS / SCSS / Pinia / 路由） | **frontend-dev** |
+| 代码审查 | **code-reviewer**（仅读） |
+| 需求验收 + 编译构建 | **acceptance-validator** |
 
-### 并行与顺序执行规则
-- `backend-dev` 和 `frontend-dev` **仅当** API 合约已存在（已记录在 `.claude/skills/API_document/references/api-endpoints.md` 中）时才可并行执行。
-- 若 API 合约是新增的 → `backend-dev` 必须先完成。
-- `code-reviewer` 必须在两位开发 Agent 都完成之后才运行，不可与之并行。
-- `test-validator` 必须在 `code-reviewer` 之后运行，不可跳过。
+**并行/顺序**：API 合约已确定时 backend / frontend 可并行；新增合约则 backend 先行（合约是源头）。审查必在两位 dev 完成后；验收必在审查后，不可跳过。
 
+---
 
 ## 3. SubAgent 团队
 
-| Agent | 模型 | 负责范围 | 委托时机 |
-|---|---|---|---|
-| `backend-dev` | sonnet | Controller、Service、Mapper、Entity、DTO、Config、Security | 任何服务端变更：新接口、业务逻辑、数据库查询、安全配置 |
-| `frontend-dev` | sonnet | Vue 页面、组件、Pinia Store、Router、API 层、SCSS | 任何 UI 变更：新页面、组件、Store Action、API 对接 |
-| `code-reviewer` | opus | 安全审查、OWASP 检查、代码规范一致性 | backend-dev 或 frontend-dev 完成变更之后。合并前必经环节。仅读不写。 |
-| `test-validator` | haiku | 执行 `mvnw test` 和 `pnpm run build`，报告通过/失败 | code-reviewer 审批通过后。确认无回归。 |
-| `devops-deploy` | haiku  | Dockerfile、docker-compose、nginx.conf、.env 管理 | 任何基础设施或部署相关变更。也在 test-validator 通过且涉及部署文件时启动。 |
-| `doc-writer` | haiku | `mall-backend/DevDoc/` 下所有开发文档 | backend-dev 完成变更后。生成阶段交付文档或规划/设计文档，也负责更新已有文档。 |
+> 权威清单见 `.claude/agents/*.md`；下表为速查，新增/删除 agent 时两处一起改。
 
-### 委托决策树
-1. 纯基础设施 / Docker / 部署 → **devops-deploy**
-2. 涉及 Java 源文件 → **backend-dev**
-3. 涉及 Vue / JS / SCSS 文件 → **frontend-dev**
-4. 同时涉及前后端 → **先 backend-dev**（API 合约是源头），再 **frontend-dev**，最后 **code-reviewer** 审查两者
-5. backend-dev 完成变更后 → **doc-writer** 根据交接信息生成或更新 `DevDoc/` 文档（可与 code-reviewer 并行）
+| Agent | 模型 | 负责范围 |
+|---|---|---|
+| `backend-dev` | opus | Controller、Service、Mapper、Entity、DTO、Config、Security |
+| `frontend-dev` | opus | Vue 页面/组件、Pinia Store、Router、API 层、SCSS |
+| `code-reviewer` | opus | 安全审查、对照 Rules 检查、前后端合约对接（仅读不写） |
+| `acceptance-validator` | sonnet | L1 编译/构建门禁 + L2 按验收标准做需求验收 |
+
+> 编码规约按文件路径**自动加载**（见 `.claude/rules/`），不在此重复。
 
 ---
 
-## 5. 安全策略
+## 4. 安全红线
 
-以下规则不得违反，任何 Agent 均无权覆盖。
-
-1. **绝不**修改、创建或 commit `.env` 文件。只能编辑 `.env.example`，并手动通知开发者复制。
-2. **绝不** commit 密钥：JWT Secret、数据库密码、API Key。若暂存区中检测到，立即中止。
-3. **绝不**在未写明回滚方案的情况下修改 `schema.sql` 或任何数据库迁移脚本。
-4. **绝不**在未获得用户明确确认的情况下执行 `rm -rf`、`git reset --hard`、`git checkout .`、`DROP TABLE` 或 `format` 命令。（`block-dangerous.sh` hook 自动执行此拦截。）
+见 `.claude/rules/security-redlines.md`（全局自动加载，任何 agent 无权违反）。危险命令由 `hooks/block-dangerous.sh` 在执行前拦截。
 
 ---
+
+## 5. 文档地图
+
+- `docs/` — **唯一**长青设计文档（架构 / 数据库 / Redis / RabbitMQ / 支付 / 安全 / 部署 / 入门）。
+- `docs/agents/` — Agent 协作配置（issue tracker、领域文档消费规则），见 `## Agent skills`。
+- **API** — 以代码 + Swagger（`/swagger-ui`、`/v3/api-docs`）为准，不再手维护 API 文档；可用 MySQL MCP inspect 真实表结构。
+
+---
+
+## 6. 数据库 MCP
+
+已配置 `@benborla29/mcp-server-mysql`（见根目录 `.mcp.json`），连接本机**开发库** `mall`，读写开启。写 Mapper/Entity 前可 inspect schema，列名/类型不靠猜；改数据后可核对副作用。**仅连开发库。**
+
+---
+
+## 7. Agent skills
+
+### Issue tracker
+
+GitHub Issues（`gh` CLI），仓库 `geekie-yuan/SpringMall`。见 `docs/agents/issue-tracker.md`。
+
+### Domain docs
+
+single-context 布局：`CONTEXT.md`（领域词汇表）+ `docs/adr/`（架构决策记录），与 `docs/`（长青设计文档）并行、职责不同——`docs/` 描述系统现状，`CONTEXT.md`/ADR 记录术语定义与某次决策的取舍过程。见 `docs/agents/domain.md`。
 
