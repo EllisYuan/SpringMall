@@ -38,7 +38,7 @@ SpringMall 是一个前后端分离的单体全栈电商应用，完整实现电
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/geekie-yuan/springMall.git
+git clone https://github.com/EllisYuan/SpringMall.git
 cd springMall
 
 # 2. 配置环境变量
@@ -55,7 +55,7 @@ docker compose --env-file .env up -d --build --wait
 
 ```powershell
 # 1. 克隆仓库
-git clone https://github.com/geekie-yuan/springMall.git
+git clone https://github.com/EllisYuan/SpringMall.git
 cd springMall
 
 # 2. 配置环境变量

@@ -28,4 +28,7 @@ mall-backend/.git/
 .env.prod
 
 .claude - 副本/
+*副本*
 .claude/worktrees/
+# 本地私有配置：个人权限许可、MCP 开关，可能含本地凭据，不入库
+.claude/settings.local.json

@@ -84,7 +84,7 @@
 
 ### Issue tracker
 
-GitHub Issues（`gh` CLI），仓库 `geekie-yuan/SpringMall`。见 `docs/agents/issue-tracker.md`。
+GitHub Issues（`gh` CLI），仓库由 `git remote` 推断。见 `docs/agents/issue-tracker.md`。
 
 ### Domain docs
 
